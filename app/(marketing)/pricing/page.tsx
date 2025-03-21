@@ -1,17 +1,44 @@
-"use server"
+"use client"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { auth } from "@clerk/nextjs/server"
+import { useAuth } from "@clerk/nextjs"
 import { Check } from "lucide-react"
-import { getProfileAction } from "@/actions/db/profiles-actions"
 import Link from "next/link"
+import { useEffect, useState } from "react"
 
-export default async function PricingPage() {
-  const { userId } = await auth()
-  const profileResult = userId ? await getProfileAction(userId) : { isSuccess: false, message: "", data: undefined };
-  const isPro = profileResult.isSuccess && profileResult.data?.membership === "pro";
+// Create a server action to get the profile data
+async function getProfile(userId: string | null | undefined) {
+  "use server"
+  
+  if (!userId) return { isSuccess: false, message: "", data: undefined }
+  
+  const { getProfileAction } = await import("@/actions/db/profiles-actions")
+  return getProfileAction(userId)
+}
 
+export default function PricingPage() {
+  const { userId, isLoaded } = useAuth()
+  const [isClient, setIsClient] = useState(false)
+  const [isPro, setIsPro] = useState(false)
+  
+  useEffect(() => {
+    setIsClient(true)
+    
+    if (userId) {
+      const fetchProfile = async () => {
+        const profileResult = await getProfile(userId)
+        setIsPro(profileResult.isSuccess && profileResult.data?.membership === "pro")
+      }
+      
+      fetchProfile()
+    }
+  }, [userId])
+  
+  if (!isClient || !isLoaded) {
+    return null
+  }
+  
   return (
     <div className="container py-12 mx-auto max-w-5xl">
       <div className="flex flex-col items-center text-center mb-12">

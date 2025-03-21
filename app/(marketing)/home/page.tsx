@@ -1,21 +1,24 @@
-"use server"
+"use client"
 
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { auth } from "@clerk/nextjs/server"
+import { useAuth } from "@clerk/nextjs"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CheckCircle, Brain, Trophy, TrendingUp, Gauge, SparkleIcon, Zap, Flag } from "lucide-react"
+import { useEffect, useState } from "react"
 
-export default async function HomePage() {
-  // Try to get userId, but handle case where middleware is not set up
-  let userId: string | null = null;
-  try {
-    const session = await auth();
-    userId = session?.userId || null;
-  } catch (error) {
-    console.error("Auth error:", error);
-    // Continue without userId
+export default function HomePage() {
+  const { userId, isLoaded } = useAuth()
+  const [isClient, setIsClient] = useState(false)
+  
+  // This ensures hydration mismatch is avoided
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+  
+  if (!isClient || !isLoaded) {
+    return null
   }
   
   return (
