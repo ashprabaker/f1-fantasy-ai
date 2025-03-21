@@ -1,6 +1,6 @@
 # Project Instructions
 
-Use the project specification and guidelines as you build the Perplexity clone.
+Use the project specification and guidelines as you build the F1 Fantasy App.
 
 Write the complete code for every step. Do not get lazy.
 
@@ -54,6 +54,7 @@ Follow these rules when building the project.
 
 - Use `@` to import anything from the project unless otherwise specified
 - Use kebab case for all files and folders unless otherwise specified
+- Use pnpm for all installs!
 
 #### Env Rules
 
