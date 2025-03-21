@@ -58,4 +58,65 @@ export async function updateProfileAction(
     console.error("Error updating profile:", error);
     return { isSuccess: false, message: "Failed to update profile" };
   }
+}
+
+export async function fixSubscriptionMembershipAction(
+  userId: string
+): Promise<ActionState<SelectProfile>> {
+  try {
+    // First get the profile to check if they have a subscription ID but not pro status
+    const profile = await getProfile(userId);
+    
+    if (!profile) {
+      return {
+        isSuccess: false,
+        message: "Profile not found"
+      };
+    }
+    
+    // If they already have pro membership, no fix needed
+    if (profile.membership === "pro") {
+      return {
+        isSuccess: true,
+        message: "User already has pro membership",
+        data: profile
+      };
+    }
+    
+    // If they have a subscription ID but aren't marked as pro, fix it
+    if (profile.stripeSubscriptionId) {
+      // Import stripe dynamically to avoid server/client issues
+      const { stripe } = await import("@/lib/stripe");
+      
+      try {
+        // Check if the subscription is active
+        const subscription = await stripe.subscriptions.retrieve(profile.stripeSubscriptionId);
+        
+        if (subscription.status === "active" || subscription.status === "trialing") {
+          // Update the profile to pro
+          const updatedProfile = await updateProfile(userId, {
+            membership: "pro"
+          });
+          
+          return {
+            isSuccess: true,
+            message: "Fixed subscription membership status",
+            data: updatedProfile
+          };
+        }
+      } catch (stripeError) {
+        console.error("Error checking subscription:", stripeError);
+        // If we can't retrieve the subscription, it might be invalid
+      }
+    }
+    
+    return {
+      isSuccess: false,
+      message: "No valid subscription found to fix",
+      data: profile
+    };
+  } catch (error) {
+    console.error("Error fixing subscription membership:", error);
+    return { isSuccess: false, message: "Failed to fix subscription membership" };
+  }
 } 

@@ -6,12 +6,14 @@ import { useAuth } from "@clerk/nextjs"
 import { Check } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { getProfile } from "@/app/pricing/actions"
+import { getProfile, fixSubscription } from "@/app/pricing/actions"
+import { toast } from "@/components/ui/use-toast"
 
 export default function PricingPage() {
   const { userId, isLoaded } = useAuth()
   const [isClient, setIsClient] = useState(false)
   const [isPro, setIsPro] = useState(false)
+  const [isFixing, setIsFixing] = useState(false)
   
   useEffect(() => {
     setIsClient(true)
@@ -25,6 +27,37 @@ export default function PricingPage() {
       fetchProfile()
     }
   }, [userId])
+  
+  const handleFixSubscription = async () => {
+    if (!userId) return
+    
+    setIsFixing(true)
+    try {
+      const result = await fixSubscription(userId)
+      if (result.isSuccess) {
+        toast({
+          title: "Subscription fixed",
+          description: "Your pro membership has been restored.",
+          variant: "default"
+        })
+        setIsPro(true)
+      } else {
+        toast({
+          title: "Unable to fix subscription",
+          description: result.message || "No active subscription found.",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to fix subscription. Please contact support.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsFixing(false)
+    }
+  }
   
   if (!isClient || !isLoaded) {
     return null
@@ -77,7 +110,7 @@ export default function PricingPage() {
               </li>
             </ul>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex flex-col gap-3">
             {!userId ? (
               <Button className="w-full" asChild>
                 <Link href="/signup">Sign Up for Pro</Link>
@@ -89,11 +122,24 @@ export default function PricingPage() {
                 </Link>
               </Button>
             ) : (
-              <Button className="w-full" asChild>
-                <Link href={`${process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_MONTHLY}?client_reference_id=${userId}`}>
-                  Upgrade to Pro
-                </Link>
-              </Button>
+              <>
+                <Button className="w-full" asChild>
+                  <Link href={`${process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_MONTHLY}?client_reference_id=${userId}`}>
+                    Upgrade to Pro
+                  </Link>
+                </Button>
+                <div className="text-center w-full">
+                  <Button 
+                    variant="link" 
+                    size="sm" 
+                    className="text-xs text-muted-foreground"
+                    onClick={handleFixSubscription}
+                    disabled={isFixing}
+                  >
+                    {isFixing ? "Checking subscription..." : "Already subscribed but can't access?"}
+                  </Button>
+                </div>
+              </>
             )}
           </CardFooter>
         </Card>

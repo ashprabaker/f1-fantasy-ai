@@ -37,10 +37,12 @@ export const updateStripeCustomer = async (userId: string, subscriptionId: strin
     }
 
     const subscription = await getSubscription(subscriptionId);
-
+    
+    // When a checkout session is completed, the subscription should be for a Pro plan
     const updatedProfile = await updateProfile(userId, {
       stripeCustomerId: customerId,
-      stripeSubscriptionId: subscription.id
+      stripeSubscriptionId: subscription.id,
+      membership: "pro" // Set membership to pro for new subscriptions
     });
 
     if (!updatedProfile) {
