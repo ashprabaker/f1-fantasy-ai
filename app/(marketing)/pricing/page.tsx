@@ -6,16 +6,7 @@ import { useAuth } from "@clerk/nextjs"
 import { Check } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-
-// Create a server action to get the profile data
-async function getProfile(userId: string | null | undefined) {
-  "use server"
-  
-  if (!userId) return { isSuccess: false, message: "", data: undefined }
-  
-  const { getProfileAction } = await import("@/actions/db/profiles-actions")
-  return getProfileAction(userId)
-}
+import { getProfile } from "./actions"
 
 export default function PricingPage() {
   const { userId, isLoaded } = useAuth()
