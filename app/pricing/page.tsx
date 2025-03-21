@@ -6,7 +6,7 @@ import { useAuth } from "@clerk/nextjs"
 import { Check } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { getProfile } from "./actions"
+import { getProfile } from "@/app/pricing/actions"
 
 export default function PricingPage() {
   const { userId, isLoaded } = useAuth()
