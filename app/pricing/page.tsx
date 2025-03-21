@@ -48,7 +48,7 @@ export default function PricingPage() {
           variant: "destructive"
         })
       }
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to fix subscription. Please contact support.",
