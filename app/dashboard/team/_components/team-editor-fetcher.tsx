@@ -4,7 +4,7 @@ import { getUserTeamAction } from "@/actions/db/teams-actions"
 import { getMarketDriversAction, getMarketConstructorsAction } from "@/actions/db/market-data-actions"
 import { TeamEditor } from "./team-editor"
 import { db } from "@/db/db"
-import { driversTable, constructorsTable } from "@/db/schema"
+import { driversTable, constructorsTable, SelectDriver, SelectConstructor } from "@/db/schema"
 import { eq } from "drizzle-orm"
 
 export async function TeamEditorFetcher({ userId }: { userId: string }) {
@@ -18,8 +18,8 @@ export async function TeamEditorFetcher({ userId }: { userId: string }) {
   const marketConstructors = constructorsResult.isSuccess && constructorsResult.data ? constructorsResult.data : []
   
   // Fetch team members if team exists
-  let teamDrivers = []
-  let teamConstructors = []
+  let teamDrivers: SelectDriver[] = []
+  let teamConstructors: SelectConstructor[] = []
   
   if (teamResult.isSuccess && teamResult.data) {
     const teamId = teamResult.data.id
