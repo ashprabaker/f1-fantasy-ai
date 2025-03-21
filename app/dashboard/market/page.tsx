@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { auth } from "@clerk/nextjs/server"
 import SyncF1DataButton from "./_components/sync-f1-data-button"
 import { SelectMarketDriver, SelectMarketConstructor } from "@/db/schema"
+import Image from "next/image"
 
 export default async function MarketPage() {
   const { userId } = await auth()
@@ -42,7 +43,7 @@ export default async function MarketPage() {
           <CardContent>
             {drivers.length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
-                No driver data available. Click the "Sync F1 Data" button to fetch the latest information.
+                No driver data available. Click the &quot;Sync F1 Data&quot; button to fetch the latest information.
               </div>
             ) : (
               <div className="rounded-md border">
@@ -61,9 +62,11 @@ export default async function MarketPage() {
                       <div className="col-span-3 font-medium flex items-center gap-2">
                         {driver.imageUrl && (
                           <div className="h-8 w-8 rounded-full overflow-hidden">
-                            <img 
+                            <Image 
                               src={driver.imageUrl}
                               alt={driver.name}
+                              width={32}
+                              height={32}
                               className="h-full w-full object-cover"
                             />
                           </div>
@@ -95,7 +98,7 @@ export default async function MarketPage() {
           <CardContent>
             {constructors.length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
-                No constructor data available. Click the "Sync F1 Data" button to fetch the latest information.
+                No constructor data available. Click the &quot;Sync F1 Data&quot; button to fetch the latest information.
               </div>
             ) : (
               <div className="rounded-md border">

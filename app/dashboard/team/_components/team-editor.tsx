@@ -6,10 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { createTeamAction, updateTeamAction } from "@/actions/db/teams-actions"
-import { addDriverAction, removeDriverAction, addConstructorAction, removeConstructorAction } from "@/actions/db/team-members-actions"
-import { generateTeamRecommendationsAction } from "@/actions/ai-recommendation-actions"
+import { createTeamAction } from "@/actions/db/teams-actions"
+import { addDriverAction, addConstructorAction } from "@/actions/db/team-members-actions"
 import { toast } from "sonner"
 import { SelectTeam, SelectMarketDriver, SelectMarketConstructor, SelectDriver, SelectConstructor } from "@/db/schema"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -48,7 +46,7 @@ export function TeamEditor({
   const [constructorSearch, setConstructorSearch] = useState("")
   
   // State for budget calculation
-  const [budget, setBudget] = useState(100)
+  const [budget] = useState(100)
   const [remainingBudget, setRemainingBudget] = useState(100)
   
   // State for loading

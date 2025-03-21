@@ -5,8 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { auth } from "@clerk/nextjs/server"
 import { Check } from "lucide-react"
 import { getProfileAction } from "@/actions/db/profiles-actions"
-import { ActionState } from "@/types"
-import { SelectProfile } from "@/db/schema"
+import Link from "next/link"
 
 export default async function PricingPage() {
   const { userId } = await auth()
@@ -63,19 +62,19 @@ export default async function PricingPage() {
           <CardFooter>
             {!userId ? (
               <Button className="w-full" asChild>
-                <a href="/signup">Sign Up for Pro</a>
+                <Link href="/signup">Sign Up for Pro</Link>
               </Button>
             ) : isPro ? (
               <Button className="w-full" variant="destructive" asChild>
-                <a href={`${process.env.NEXT_PUBLIC_STRIPE_PORTAL_LINK}?client_reference_id=${userId}`}>
+                <Link href={`${process.env.NEXT_PUBLIC_STRIPE_PORTAL_LINK}?client_reference_id=${userId}`}>
                   Manage Subscription
-                </a>
+                </Link>
               </Button>
             ) : (
               <Button className="w-full" asChild>
-                <a href={`${process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_MONTHLY}?client_reference_id=${userId}`}>
+                <Link href={`${process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_MONTHLY}?client_reference_id=${userId}`}>
                   Upgrade to Pro
-                </a>
+                </Link>
               </Button>
             )}
           </CardFooter>

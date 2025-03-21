@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { generateTeamRecommendationsAction } from "@/actions/ai-recommendation-actions"
 import { toast } from "sonner"
 import { SelectTeam, SelectMarketDriver, SelectMarketConstructor, SelectDriver, SelectConstructor } from "@/db/schema"
-import { Brain, ArrowRight } from "lucide-react"
+import { Brain } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DriverCard } from "./driver-card"
 import { ConstructorCard } from "./constructor-card"

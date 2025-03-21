@@ -3,7 +3,6 @@
 import { Suspense } from "react"
 import { auth } from "@clerk/nextjs/server"
 import { redirect } from "next/navigation"
-import { getUserTeamAction } from "@/actions/db/teams-actions"
 import { TeamEditorFetcher } from "./_components/team-editor-fetcher"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"

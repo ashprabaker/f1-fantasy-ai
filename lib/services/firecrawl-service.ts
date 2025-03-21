@@ -340,18 +340,18 @@ Drivers Table FORMAT EXAMPLE (NOT REAL DATA):
       console.log("Number of drivers extracted with AI:", parsedData.drivers.length);
       
       return parsedData.drivers;
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Error parsing AI response:", e);
       console.log("AI response content:", responseContent.substring(0, 500));
-      throw new DataExtractionError(`Error parsing AI driver data response: ${e.message}`);
+      throw new DataExtractionError(`Error parsing AI driver data response: ${e instanceof Error ? e.message : String(e)}`);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error extracting driver data with AI:", error);
     // Rethrow the error instead of returning fallback data
     if (error instanceof DataExtractionError || error instanceof FantasyDataError) {
       throw error;
     }
-    throw new DataExtractionError(`Failed to extract driver data: ${error.message}`);
+    throw new DataExtractionError(`Failed to extract driver data: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -506,25 +506,26 @@ Constructors Table FORMAT EXAMPLE (NOT REAL DATA):
       console.log("Number of constructors extracted with AI:", parsedData.constructors.length);
       
       return parsedData.constructors;
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Error parsing AI response:", e);
       console.log("AI response content:", responseContent.substring(0, 500));
-      throw new DataExtractionError(`Error parsing AI constructor data response: ${e.message}`);
+      throw new DataExtractionError(`Error parsing AI constructor data response: ${e instanceof Error ? e.message : String(e)}`);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error extracting constructor data with AI:", error);
     // Rethrow the error instead of returning fallback data
     if (error instanceof DataExtractionError || error instanceof FantasyDataError) {
       throw error;
     }
-    throw new DataExtractionError(`Failed to extract constructor data: ${error.message}`);
+    throw new DataExtractionError(`Failed to extract constructor data: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 /**
- * Provides hardcoded F1 driver data as a fallback when API extraction fails
- * @deprecated Use only for development/testing, not in production
+ * @unused
+ * @eslint-disable @typescript-eslint/no-unused-vars
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getFallbackDriverData(): DriverFantasyData[] {
   console.log("Using hardcoded F1 driver data for the 2025 season");
   return [
@@ -552,9 +553,10 @@ function getFallbackDriverData(): DriverFantasyData[] {
 }
 
 /**
- * Provides hardcoded F1 constructor data as a fallback when API extraction fails
- * @deprecated Use only for development/testing, not in production
+ * @unused
+ * @eslint-disable @typescript-eslint/no-unused-vars
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getFallbackConstructorData(): ConstructorFantasyData[] {
   console.log("Using hardcoded F1 constructor data for the 2025 season");
   return [

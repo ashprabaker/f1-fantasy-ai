@@ -7,8 +7,6 @@ import { Button } from "@/components/ui/button"
 import { 
   LayoutDashboard,
   LineChart,
-  Flag,
-  Settings,
   Users
 } from "lucide-react"
 

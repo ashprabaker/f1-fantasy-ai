@@ -4,9 +4,8 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { auth } from "@clerk/nextjs/server"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CheckCircle, Brain, Trophy, TrendingUp, Gauge, SparkleIcon, Zap, Flag } from "lucide-react"
-import Image from "next/image"
 
 export default async function HomePage() {
   // Try to get userId, but handle case where middleware is not set up
@@ -101,7 +100,7 @@ export default async function HomePage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">
-                Maximize your team's potential while staying within your budget constraints.
+                Maximize your team&apos;s potential while staying within your budget constraints.
               </p>
             </CardContent>
           </Card>
