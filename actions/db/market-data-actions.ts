@@ -59,6 +59,27 @@ export async function syncF1DataAction(): Promise<ActionState<{
   constructorsUpdated: number 
 }>> {
   try {
+    // Start async processing in the background
+    // This prevents timeout by immediately returning while processing continues
+    startBackgroundSync()
+    
+    return {
+      isSuccess: true,
+      message: "F1 Fantasy data sync started. This may take a minute to complete in the background.",
+      data: {
+        driversUpdated: 0,
+        constructorsUpdated: 0
+      }
+    }
+  } catch (error) {
+    console.error("Error initiating F1 Fantasy data sync:", error)
+    return { isSuccess: false, message: "Failed to start F1 Fantasy data sync" }
+  }
+}
+
+// This function runs the actual sync process in the background
+async function startBackgroundSync() {
+  try {
     // STEP 1: Get F1 API data for driver details (names, images, numbers, etc.)
     let f1Drivers: Driver[] = []
     let f1DriverMap = new Map<string, Driver>()
@@ -119,23 +140,8 @@ export async function syncF1DataAction(): Promise<ActionState<{
     } catch (error) {
       console.error("Error getting F1 Fantasy driver data:", error)
       
-      // Provide specific error message based on error type
-      if (error instanceof FantasyDataError) {
-        return { 
-          isSuccess: false, 
-          message: `F1 Fantasy driver data issue: ${error.message}` 
-        }
-      } else if (error instanceof DataExtractionError) {
-        return { 
-          isSuccess: false, 
-          message: `Data extraction error for drivers: ${error.message}` 
-        }
-      } else {
-        return { 
-          isSuccess: false, 
-          message: "Failed to get F1 Fantasy driver data" 
-        }
-      }
+      // Log error but continue
+      console.warn("Continuing with OpenF1 data only due to fantasy driver data error")
     }
     
     // Get constructor data
@@ -151,13 +157,6 @@ export async function syncF1DataAction(): Promise<ActionState<{
       // Log error but continue with just driver data
       console.log("Continuing with driver data only due to constructor data error")
       fantasyConstructors = [] // Ensure empty array for safety
-    }
-    
-    if (!fantasyDrivers.length) {
-      return {
-        isSuccess: false,
-        message: "No driver data found in F1 Fantasy website"
-      }
     }
     
     // STEP 3: Prepare the driver data by merging API and Fantasy data
@@ -397,28 +396,14 @@ export async function syncF1DataAction(): Promise<ActionState<{
     try {
       await updateMarketData(mergedDrivers, mergedConstructors)
       console.log("Database update successful")
+      
+      // Revalidate the paths that display market data after successful update
+      revalidatePath("/dashboard")
+      revalidatePath("/dashboard/market")
     } catch (error) {
       console.error("Error updating database:", error)
-      return { 
-        isSuccess: false, 
-        message: "Failed to update market data in database" 
-      }
-    }
-    
-    // Revalidate the paths that display market data
-    revalidatePath("/dashboard")
-    revalidatePath("/dashboard/market")
-    
-    return {
-      isSuccess: true,
-      message: `F1 Fantasy data synchronized successfully: ${mergedDrivers.length} drivers, ${mergedConstructors.length} constructors`,
-      data: {
-        driversUpdated: mergedDrivers.length,
-        constructorsUpdated: mergedConstructors.length
-      }
     }
   } catch (error) {
-    console.error("Error syncing F1 Fantasy data:", error)
-    return { isSuccess: false, message: "Failed to sync F1 Fantasy data" }
+    console.error("Error in background sync process:", error)
   }
 } 
