@@ -1,7 +1,5 @@
 "use server"
 
-import Link from "next/link"
-
 export async function Footer() {
   return (
     <footer className="border-t py-6 md:py-8">
