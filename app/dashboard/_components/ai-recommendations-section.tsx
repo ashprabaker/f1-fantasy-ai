@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { generateTeamRecommendationsAction } from "@/actions/ai-recommendation-actions"
+import { generateTeamRecommendationsAction, getRecommendationAction } from "@/actions/ai-recommendation-actions"
 import { toast } from "sonner"
 import { SelectTeam, SelectMarketDriver, SelectMarketConstructor, SelectDriver, SelectConstructor } from "@/db/schema"
 import { Brain } from "lucide-react"
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DriverCard } from "./driver-card"
 import { ConstructorCard } from "./constructor-card"
 import ReactMarkdown from "react-markdown"
+import { useAuth } from "@clerk/nextjs"
 
 interface TeamWithMembers extends SelectTeam {
   drivers: SelectDriver[];
@@ -37,13 +38,57 @@ export default function AIRecommendationsSection({
   marketDrivers, 
   marketConstructors 
 }: AIRecommendationsSectionProps) {
+  const { userId } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
+  const [isPolling, setIsPolling] = useState(false)
   const [recommendation, setRecommendation] = useState<RecommendationData | null>(null)
   const [showRecommendationDialog, setShowRecommendationDialog] = useState(false)
   const [activeTab, setActiveTab] = useState("current")
   
+  // Setup polling for recommendation status
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    if (isPolling && userId) {
+      intervalId = setInterval(async () => {
+        try {
+          const result = await getRecommendationAction(userId);
+          
+          if (result.isSuccess && !result.message.includes("in progress") && result.data) {
+            // Recommendation is ready
+            setRecommendation(result.data);
+            setIsLoading(false);
+            setIsPolling(false);
+            setShowRecommendationDialog(true);
+            
+            // Clear the interval
+            if (intervalId) clearInterval(intervalId);
+          } else if (!result.isSuccess && result.message.includes("No recommendation")) {
+            // No recommendation found (possible error)
+            setIsLoading(false);
+            setIsPolling(false);
+            
+            // Clear the interval
+            if (intervalId) clearInterval(intervalId);
+          }
+        } catch (error) {
+          console.error("Error polling recommendation status:", error);
+        }
+      }, 2000); // Poll every 2 seconds
+    }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isPolling, userId]);
+  
   // Get AI recommendations for the team
   const getRecommendations = async () => {
+    if (!userId) {
+      toast.error("You must be signed in to get recommendations")
+      return
+    }
+    
     if (!team.drivers || !team.constructors || team.drivers.length === 0 || team.constructors.length === 0) {
       toast.error("Your team must have at least one driver and one constructor")
       return
@@ -52,25 +97,42 @@ export default function AIRecommendationsSection({
     setIsLoading(true)
     
     try {
+      // Start the recommendation generation
       const result = await generateTeamRecommendationsAction(
         { 
           drivers: team.drivers, 
           constructors: team.constructors 
         },
         marketDrivers,
-        marketConstructors
+        marketConstructors,
+        userId
       )
       
       if (result.isSuccess && result.data) {
-        setRecommendation(result.data)
-        setShowRecommendationDialog(true)
+        if (result.data.inProgress) {
+          // Start polling for results
+          toast.info("Generating recommendations, this may take a moment...")
+          setIsPolling(true)
+        } else {
+          // Immediately get the results if they're ready
+          const recommendationResult = await getRecommendationAction(userId)
+          
+          if (recommendationResult.isSuccess && recommendationResult.data) {
+            setRecommendation(recommendationResult.data)
+            setShowRecommendationDialog(true)
+            setIsLoading(false)
+          } else {
+            // Fall back to polling if something went wrong
+            setIsPolling(true)
+          }
+        }
       } else {
-        toast.error(result.message || "Failed to generate recommendations")
+        toast.error(result.message || "Failed to start recommendation generation")
+        setIsLoading(false)
       }
     } catch (error) {
       console.error("Error generating recommendations:", error)
       toast.error("An error occurred while generating recommendations")
-    } finally {
       setIsLoading(false)
     }
   }
@@ -101,10 +163,10 @@ export default function AIRecommendationsSection({
         <CardFooter>
           <Button 
             onClick={getRecommendations} 
-            disabled={isLoading}
+            disabled={isLoading || isPolling}
             className="w-full"
           >
-            {isLoading ? "Generating Recommendations..." : "Get AI Recommendations"}
+            {isLoading || isPolling ? "Generating Recommendations..." : "Get AI Recommendations"}
           </Button>
         </CardFooter>
       </Card>

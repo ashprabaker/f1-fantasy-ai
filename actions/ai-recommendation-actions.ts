@@ -29,11 +29,101 @@ const F1RecommendationSchema = z.object({
 
 type AIRecommendationResponse = z.infer<typeof F1RecommendationSchema>;
 
+// Store the latest recommendation for each user
+const recommendationStore = new Map<string, {
+  recommendation: Recommendation | null;
+  inProgress: boolean;
+  timestamp: number;
+}>();
+
 export async function generateTeamRecommendationsAction(
   teamData: TeamData,
   marketDrivers: SelectMarketDriver[],
-  marketConstructors: SelectMarketConstructor[]
-): Promise<ActionState<Recommendation>> {
+  marketConstructors: SelectMarketConstructor[],
+  userId: string
+): Promise<ActionState<{ inProgress: boolean }>> {
+  try {
+    // Check if we already have a recent recommendation for this user
+    const userRecommendation = recommendationStore.get(userId);
+    
+    // If recommendation is already in progress, return that status
+    if (userRecommendation?.inProgress) {
+      return {
+        isSuccess: true,
+        message: "Recommendation generation in progress",
+        data: { inProgress: true }
+      };
+    }
+    
+    // If we have a recent recommendation (less than 2 minutes old), return it
+    if (userRecommendation?.recommendation && 
+        (Date.now() - userRecommendation.timestamp) < 2 * 60 * 1000) {
+      return {
+        isSuccess: true,
+        message: "Using recent recommendation",
+        data: { inProgress: false }
+      };
+    }
+    
+    // Set in-progress flag
+    recommendationStore.set(userId, {
+      recommendation: null,
+      inProgress: true,
+      timestamp: Date.now()
+    });
+    
+    // Start background process
+    generateRecommendationInBackground(teamData, marketDrivers, marketConstructors, userId);
+    
+    // Return immediately with in-progress status
+    return {
+      isSuccess: true,
+      message: "Recommendation generation started",
+      data: { inProgress: true }
+    };
+  } catch (error) {
+    console.error("Error initiating recommendation generation:", error);
+    return { 
+      isSuccess: false, 
+      message: "Failed to start recommendation generation",
+      data: { inProgress: false }
+    };
+  }
+}
+
+// Get the latest recommendation for a user
+export async function getRecommendationAction(userId: string): Promise<ActionState<Recommendation | null>> {
+  try {
+    const userRecommendation = recommendationStore.get(userId);
+    
+    if (!userRecommendation) {
+      return {
+        isSuccess: false,
+        message: "No recommendation found",
+        data: null
+      };
+    }
+    
+    return {
+      isSuccess: !userRecommendation.inProgress,
+      message: userRecommendation.inProgress 
+        ? "Recommendation generation in progress" 
+        : "Recommendation retrieved successfully",
+      data: userRecommendation.recommendation
+    };
+  } catch (error) {
+    console.error("Error retrieving recommendation:", error);
+    return { isSuccess: false, message: "Failed to retrieve recommendation", data: null };
+  }
+}
+
+// Background process for generating recommendations
+async function generateRecommendationInBackground(
+  teamData: TeamData,
+  marketDrivers: SelectMarketDriver[],
+  marketConstructors: SelectMarketConstructor[],
+  userId: string
+) {
   try {
     // Use fixed budget of 100M
     const FIXED_BUDGET = 100;
@@ -102,12 +192,14 @@ export async function generateTeamRecommendationsAction(
     // Extract the parsed response
     const aiResponse = completion.choices[0].message.parsed;
     
-    // If parsed response is null, return an error
+    // If parsed response is null, handle the error
     if (!aiResponse) {
-      return {
-        isSuccess: false,
-        message: "Failed to parse AI response"
-      };
+      recommendationStore.set(userId, {
+        recommendation: null,
+        inProgress: false,
+        timestamp: Date.now()
+      });
+      return;
     }
     
     // Validate that we have exactly 5 drivers and 2 constructors
@@ -156,13 +248,22 @@ export async function generateTeamRecommendationsAction(
       }
     };
     
-    return {
-      isSuccess: true,
-      message: "Recommendations generated successfully",
-      data: recommendation
-    };
+    // Store the recommendation
+    recommendationStore.set(userId, {
+      recommendation,
+      inProgress: false,
+      timestamp: Date.now()
+    });
   } catch (error) {
-    console.error("Error generating recommendations:", error);
-    return { isSuccess: false, message: "Failed to generate recommendations" };
+    console.error("Error in background recommendation generation:", error);
+    
+    // Reset in-progress flag on error
+    const existingData = recommendationStore.get(userId);
+    if (existingData) {
+      recommendationStore.set(userId, {
+        ...existingData,
+        inProgress: false
+      });
+    }
   }
 } 
