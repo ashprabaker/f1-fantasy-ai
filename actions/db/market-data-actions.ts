@@ -397,9 +397,8 @@ async function startBackgroundSync() {
       await updateMarketData(mergedDrivers, mergedConstructors)
       console.log("Database update successful")
       
-      // Revalidate the paths that display market data after successful update
-      revalidatePath("/dashboard")
-      revalidatePath("/dashboard/market")
+      // Remove revalidatePath calls from here - they're causing the error
+      // They'll be handled by the client refreshing after polling completes
     } catch (error) {
       console.error("Error updating database:", error)
     }

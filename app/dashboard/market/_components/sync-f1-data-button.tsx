@@ -10,7 +10,19 @@ import { useRouter } from "next/navigation"
 export default function SyncF1DataButton() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStartedAt, setSyncStartedAt] = useState<Date | null>(null)
+  const [initialDriverCount, setInitialDriverCount] = useState<number | null>(null)
   const router = useRouter()
+  
+  // Store initial driver count when starting sync
+  useEffect(() => {
+    if (isSyncing && syncStartedAt && initialDriverCount === null) {
+      getMarketDriversAction().then(result => {
+        if (result.isSuccess && result.data) {
+          setInitialDriverCount(result.data.length)
+        }
+      })
+    }
+  }, [isSyncing, syncStartedAt, initialDriverCount])
   
   // Poll for completion if sync is in progress
   useEffect(() => {
@@ -24,19 +36,34 @@ export default function SyncF1DataButton() {
         // Check if we have new drivers data
         const result = await getMarketDriversAction()
         
-        // If successful and we've been syncing for at least 10 seconds
-        // (to avoid false completion if the sync was started previously)
+        // If successful and data has changed (either new entries or updated timestamps)
+        // We need at least 10 seconds to have passed to avoid false positives
         const timeElapsed = Date.now() - syncStartedAt.getTime()
-        if (result.isSuccess && result.data && result.data.length > 0 && timeElapsed > 10000) {
-          setIsSyncing(false)
-          setSyncStartedAt(null)
-          toast.success("F1 data sync completed")
-          router.refresh()
-        } else if (timeElapsed > maxWaitTime) {
+        if (result.isSuccess && result.data) {
+          // Check if we have a different number of drivers or 30+ seconds elapsed
+          const hasNewData = initialDriverCount !== null && 
+                            (result.data.length !== initialDriverCount || timeElapsed > 30000)
+          
+          if (hasNewData) {
+            setIsSyncing(false)
+            setSyncStartedAt(null)
+            setInitialDriverCount(null)
+            toast.success("F1 data sync completed")
+            
+            // Force revalidation by refreshing the router
+            router.refresh()
+          }
+        }
+        
+        if (timeElapsed > maxWaitTime) {
           // Timeout after max wait time
           setIsSyncing(false)
           setSyncStartedAt(null)
+          setInitialDriverCount(null)
           toast.error("Sync is taking longer than expected. Check data later.")
+          
+          // Refresh anyway in case there was partial data
+          router.refresh()
         }
       } catch (error) {
         console.error("Error checking sync status:", error)
@@ -45,12 +72,13 @@ export default function SyncF1DataButton() {
     
     const interval = setInterval(checkSyncCompletion, checkInterval)
     return () => clearInterval(interval)
-  }, [isSyncing, syncStartedAt, router])
+  }, [isSyncing, syncStartedAt, initialDriverCount, router])
   
   async function handleSync() {
     try {
       setIsSyncing(true)
       setSyncStartedAt(new Date())
+      setInitialDriverCount(null)
       
       // Call the server action
       const result = await syncF1DataAction()
@@ -61,12 +89,14 @@ export default function SyncF1DataButton() {
         toast.error(result.message)
         setIsSyncing(false)
         setSyncStartedAt(null)
+        setInitialDriverCount(null)
       }
     } catch (error) {
       toast.error("Failed to sync F1 data")
       console.error(error)
       setIsSyncing(false)
       setSyncStartedAt(null)
+      setInitialDriverCount(null)
     }
   }
   
