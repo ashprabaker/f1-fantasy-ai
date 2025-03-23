@@ -4,7 +4,6 @@ import { Header } from "@/components/ui/header"
 import { Footer } from "@/components/ui/footer"
 import { Sidebar } from "./_components/sidebar"
 import { auth } from "@clerk/nextjs/server"
-import { getProfileAction } from "@/actions/db/profiles-actions"
 import { redirect } from "next/navigation"
 import postgres from "postgres"
 
@@ -34,32 +33,6 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
     // Check if the user has an active subscription
     if (subscriptions.length > 0 && subscriptions[0].active === true) {
       isPro = true;
-    } else {
-      // Also try the getProfileAction as a fallback
-      const { data: profile, isSuccess } = await getProfileAction(userId);
-      if (isSuccess && profile && profile.membership === "pro") {
-        isPro = true;
-        
-        // Ensure the subscription is also recorded in the subscriptions table
-        await sql`
-          INSERT INTO subscriptions (
-            user_id, 
-            active, 
-            stripe_customer_id, 
-            stripe_subscription_id
-          )
-          VALUES (
-            ${userId}, 
-            ${true}, 
-            ${profile.stripeCustomerId || null}, 
-            ${profile.stripeSubscriptionId || null}
-          )
-          ON CONFLICT (user_id) 
-          DO UPDATE SET 
-            active = ${true},
-            updated_at = NOW()
-        `;
-      }
     }
     
     // If still not pro, add to subscriptions as an override (for development testing only)

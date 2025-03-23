@@ -1,6 +1,6 @@
 import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { pgTable, text, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import postgres from "postgres";
 
 // Load environment variables
@@ -15,10 +15,6 @@ const profilesTable = pgTable("profiles", {
   membership: membershipEnum("membership").notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
-  lastRecommendationAt: timestamp("last_recommendation_at"),
-  recommendationCount: integer("recommendation_count").default(0),
-  lastSyncAt: timestamp("last_sync_at"),
-  syncCount: integer("sync_count").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -45,10 +41,6 @@ const pushSchema = async () => {
       membership membership NOT NULL DEFAULT 'free',
       stripe_customer_id TEXT,
       stripe_subscription_id TEXT,
-      last_recommendation_at TIMESTAMP,
-      recommendation_count INTEGER DEFAULT 0,
-      last_sync_at TIMESTAMP,
-      sync_count INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT NOW() NOT NULL,
       updated_at TIMESTAMP DEFAULT NOW() NOT NULL
     );

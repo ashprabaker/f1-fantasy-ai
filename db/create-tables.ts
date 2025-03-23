@@ -19,10 +19,13 @@ const createTables = async () => {
     console.log("Creating subscriptions table...");
     await sql`
       CREATE TABLE IF NOT EXISTS subscriptions (
-        user_id TEXT PRIMARY KEY,
-        membership TEXT NOT NULL DEFAULT 'free',
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT UNIQUE NOT NULL,
+        active BOOLEAN DEFAULT true,
         stripe_customer_id TEXT,
         stripe_subscription_id TEXT,
+        stripe_price_id TEXT,
+        stripe_current_period_end TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );

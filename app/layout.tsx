@@ -20,21 +20,9 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { userId } = await auth();
-  
-  if (userId) {
-    // Check if profile exists first before creating
-    const { isSuccess, data } = await getProfileAction(userId);
-    
-    if (!isSuccess || !data) {
-      // Only create profile if it doesn't exist
-      await createProfileAction({
-        userId,
-        membership: "free"
-      });
-    }
-  }
-  
+  // Don't try to create a profile on every request
+  // This is causing errors since the column structure doesn't match
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`}>

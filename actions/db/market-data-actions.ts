@@ -87,28 +87,12 @@ export async function syncF1DataAction(): Promise<ActionState<{
       };
     }
     
-    // Check rate limit
-    const { checkSyncRateLimitAction, updateSyncUsageAction } = await import('@/actions/db/profiles-actions');
-    const rateLimitResult = await checkSyncRateLimitAction(userId);
-    
-    // If rate limit check failed or user is rate limited
-    if (!rateLimitResult.isSuccess || !rateLimitResult.data?.canMakeRequest) {
-      return {
-        isSuccess: false,
-        message: rateLimitResult.message || "Rate limit exceeded",
-        data: {
-          driversUpdated: 0,
-          constructorsUpdated: 0
-        }
-      };
-    }
-    
-    // Update usage count
-    await updateSyncUsageAction(userId);
+    // Rate limiting is now handled through the subscriptions table
+    // We removed the profiles table rate limiting functionality
     
     // Start async processing in the background
     // This prevents timeout by immediately returning while processing continues
-    startBackgroundSync()
+    startBackgroundSync();
     
     return {
       isSuccess: true,
