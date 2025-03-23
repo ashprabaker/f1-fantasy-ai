@@ -28,8 +28,8 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      console.error('[WEBHOOK-DEBUG] Error processing webhook:', errorMessage);
-      console.error('[WEBHOOK-DEBUG] Error details:', error);
+    console.error('[WEBHOOK-DEBUG] Error processing webhook:', errorMessage);
+    console.error('[WEBHOOK-DEBUG] Error details:', error);
     console.error('[WEBHOOK-DEBUG] Failed to construct event:', errorMessage);
     return new Response(`Webhook Error: ${errorMessage}`, { status: 400 });
   }
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     try {
       console.log('[WEBHOOK-DEBUG] Processing relevant event:', event.type);
       switch (event.type) {
-        case "checkout.session.completed":
+        case "checkout.session.completed": {
           console.log('[WEBHOOK-DEBUG] Processing checkout.session.completed');
           const checkoutSession = event.data.object as Stripe.Checkout.Session;
           
@@ -59,24 +59,20 @@ export async function POST(req: Request) {
           });
           try {
             await updateStripeCustomer(
-            checkoutSession.client_reference_id as string,
-            checkoutSession.subscription as string,
-            checkoutSession.customer as string
-          );
-          console.log('[WEBHOOK-DEBUG] updateStripeCustomer completed successfully');
+              checkoutSession.client_reference_id as string,
+              checkoutSession.subscription as string,
+              checkoutSession.customer as string
+            );
+            console.log('[WEBHOOK-DEBUG] updateStripeCustomer completed successfully');
           } catch (updateError) {
             console.error('[WEBHOOK-DEBUG] Error in updateStripeCustomer:', updateError);
             throw updateError;
           }
-          console.log('[WEBHOOK-DEBUG] manageSubscriptionStatusChange completed successfully');
-          } catch (manageError) {
-            console.error('[WEBHOOK-DEBUG] Error in manageSubscriptionStatusChange:', manageError);
-            throw manageError;
-          }
           break;
+        }
           
         case "customer.subscription.updated":
-        case "customer.subscription.deleted":
+        case "customer.subscription.deleted": {
           const subscription = event.data.object as Stripe.Subscription;
           console.log('[WEBHOOK-DEBUG] Processing subscription event with subscription ID:', subscription.id);
           
@@ -98,11 +94,17 @@ export async function POST(req: Request) {
           });
           try {
             await manageSubscriptionStatusChange(
-            subscription.id,
-            subscription.customer as string,
-            subscription.items.data[0].price.product as string
-          );
+              subscription.id,
+              subscription.customer as string,
+              subscription.items.data[0].price.product as string
+            );
+            console.log('[WEBHOOK-DEBUG] manageSubscriptionStatusChange completed successfully');
+          } catch (manageError) {
+            console.error('[WEBHOOK-DEBUG] Error in manageSubscriptionStatusChange:', manageError);
+            throw manageError;
+          }
           break;
+        }
           
         default:
           throw new Error(`Unhandled relevant event: ${event.type}`);
@@ -112,6 +114,8 @@ export async function POST(req: Request) {
       return new Response(null, { status: 200 });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error('[WEBHOOK-DEBUG] Error processing webhook:', errorMessage);
+      console.error('[WEBHOOK-DEBUG] Error details:', error);
       return new Response(`Webhook error: ${errorMessage}`, { status: 400 });
     }
   }
