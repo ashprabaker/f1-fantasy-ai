@@ -1,6 +1,9 @@
 import { stripe } from "@/lib/stripe";
 import { NextRequest } from "next/server";
 
+// Use Edge Runtime
+export const runtime = 'edge';
+
 // Disable body parsing for this route
 export const config = {
   api: {
@@ -14,11 +17,11 @@ export async function POST(req: NextRequest) {
     console.log("[WEBHOOK-TEST] Received test webhook request");
     
     // Get the request body
-    const body = await req.text();
-    console.log("[WEBHOOK-TEST] Request body length:", body.length);
+    const rawBody = await req.text();
+    console.log("[WEBHOOK-TEST] Request body length:", rawBody.length);
     
     // Get the Stripe signature
-    const signature = req.headers.get("Stripe-Signature");
+    const signature = req.headers.get("Stripe-Signature") || req.headers.get("stripe-signature");
     console.log("[WEBHOOK-TEST] Signature present:", !!signature);
     
     // Log webhook secret info
@@ -29,12 +32,12 @@ export async function POST(req: NextRequest) {
     if (signature && process.env.STRIPE_WEBHOOK_SECRET) {
       try {
         const event = stripe.webhooks.constructEvent(
-          body,
+          rawBody,
           signature,
           process.env.STRIPE_WEBHOOK_SECRET
         );
         console.log("[WEBHOOK-TEST] Successfully validated signature for event type:", event.type);
-        return new Response(JSON.stringify({ success: true, message: "Signature validated" }), {
+        return new Response(JSON.stringify({ success: true, message: "Signature validated", eventType: event.type }), {
           status: 200,
           headers: { "Content-Type": "application/json" }
         });
