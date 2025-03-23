@@ -212,7 +212,7 @@ export default async function DashboardPage() {
                                   variant="outline"
                                   style={{ 
                                     backgroundColor: marketDriver.teamColor || "#CBD5E0",
-                                    color: "#000000",
+                                    color: "#ffffff",
                                     fontWeight: "medium",
                                     border: "none"
                                   }}

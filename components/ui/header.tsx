@@ -1,7 +1,6 @@
 "use client"
 
 import { UserButton } from "@clerk/nextjs"
-import { ModeToggle } from "@/components/ui/mode-toggle"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -39,7 +38,6 @@ export function Header() {
           </div>
           
           <div className="flex items-center gap-4">
-            <ModeToggle />
             <UserButton afterSignOutUrl="/home" />
           </div>
         </div>

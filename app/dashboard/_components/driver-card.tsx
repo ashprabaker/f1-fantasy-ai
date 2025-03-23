@@ -58,7 +58,7 @@ export function DriverCard({
             <Badge 
               style={{ backgroundColor: teamColor || "#718096" }} 
               variant="outline" 
-              className="text-xs mt-1 text-black font-medium"
+              className="text-xs mt-1 text-white font-medium"
             >
               {teamName}
             </Badge>

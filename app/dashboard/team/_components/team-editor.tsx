@@ -451,7 +451,7 @@ export function TeamEditor({
                       <div>
                         <Badge variant="outline" style={{ 
                           backgroundColor: driver.teamColor || undefined,
-                          color: "#000000"
+                          color: "#ffffff"
                         }}>
                           {driver.team}
                         </Badge>
