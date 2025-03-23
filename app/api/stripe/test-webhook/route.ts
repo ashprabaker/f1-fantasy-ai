@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     // Try to construct an event
     if (signature && process.env.STRIPE_WEBHOOK_SECRET) {
       try {
-        const event = stripe.webhooks.constructEvent(
+        const event = await stripe.webhooks.constructEventAsync(
           rawBody,
           signature,
           process.env.STRIPE_WEBHOOK_SECRET
