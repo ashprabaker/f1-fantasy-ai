@@ -2,11 +2,17 @@
 
 An AI-powered tool built during a hackathon to help F1 Fantasy players optimize their team selections and maximize their points throughout the season.
 
+## Demo Video
+
+[Watch the F1 Fantasy AI Advisor Demo](https://www.loom.com/share/44537b7266a54be0a5488608fc1b5282?sid=1a060bb4-610f-487c-9cd5-79afdc995a79)
+
 ## About the Project
+
+This project was a hackathon creation in March 2025 designed to see how far the state of the art of coding tools like Cursor and Lovable had come. These tools were used to build this application.
 
 F1 Fantasy AI Advisor uses OpenAI's models to analyze driver and constructor performance data and provide personalized team recommendations based on budget constraints, recent performance metrics, and upcoming race conditions.
 
-This project was developed as part of a hackathon to explore the potential of AI in enhancing the F1 Fantasy experience. It demonstrates how AI can be leveraged to provide data-driven insights and recommendations for fantasy sports.
+This project demonstrates how AI can be leveraged to provide data-driven insights and recommendations for fantasy sports.
 
 ## Features
 
@@ -56,39 +62,13 @@ The app utilizes both historical and real-time F1 data to provide accurate recom
 - Race results and statistics
 - Current market values
 
-## Future Enhancements
 
-Future improvements planned for the project:
-
-- Real-time data integration with official F1 API
-- Machine learning model for predictive performance analysis
-- Mobile app version
-- Social sharing of team selections
-- Head-to-head team comparisons
 
 ## Acknowledgements
 
-This project was created during a hackathon by a team of F1 enthusiasts. Special thanks to:
+Special thanks to:
 
 - OpenAI for providing the AI capabilities
 - The F1 Fantasy community for inspiration
 - All contributors to the open-source technologies used
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

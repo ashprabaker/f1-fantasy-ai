@@ -96,15 +96,20 @@ export async function scrapeConstructorFantasyData(): Promise<string> {
       body: JSON.stringify({
         url: defaultUrl,
         pageOptions: {
-          onlyMainContent: true,
+          onlyMainContent: false, // Get full page content
           waitForNetworkIdle: true,
-          javascript: true
+          javascript: true,
+          timeout: 30000, // 30 second timeout
+          waitFor: "table", // Wait for table elements to load
+          screenshotOptions: {
+            fullPage: true // For debugging
+          }
         }
       })
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to scrape constructor data: ${response.statusText}`)
+      throw new Error(`Failed to scrape constructor data: ${response.statusText}`);
     }
     
     let data = await response.json();
@@ -126,9 +131,54 @@ export async function scrapeConstructorFantasyData(): Promise<string> {
     
     console.log("Content available:", !!content, "Length:", content.length);
     
-    // If the content is too short, try the alternative URL
-    if (!content || content.length < 200) {
-      console.log("First attempt yielded insufficient content, trying alternative URL...");
+    // If the content is too short, try the alternative URL with different options
+    if (!content || content.length < 2000) {
+      console.log("First attempt yielded insufficient content, trying with different options...");
+      
+      // Try again with different options
+      response = await fetch(FIRECRAWL_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${FIRECRAWL_API_KEY}`
+        },
+        body: JSON.stringify({
+          url: defaultUrl,
+          pageOptions: {
+            onlyMainContent: false, // Get the full page
+            waitForNetworkIdle: true,
+            javascript: true,
+            timeout: 45000, // 45 second timeout
+            waitFor: ".constructors-table", // Specific CSS selector for constructor table
+            waitForTimeout: 10000 // Wait 10 seconds after page load
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to scrape constructor data with extended timeout: ${response.statusText}`);
+      }
+      
+      data = await response.json();
+      console.log("Alternative options response keys:", Object.keys(data));
+      
+      // Check for nested content again
+      if (data.data && data.data.content) {
+        content = data.data.content;
+      } else if (data.data && data.data.markdown) {
+        content = data.data.markdown;
+      } else if (data.markdown) {
+        content = data.markdown;
+      } else if (data.content) {
+        content = data.content;
+      }
+      
+      console.log("Alternative content available:", !!content, "Length:", content.length);
+    }
+    
+    // If content is still too short, try a completely different URL
+    if (!content || content.length < 2000) {
+      console.log("Second attempt yielded insufficient content, trying alternative URL...");
       
       // Try with the statistics page instead
       const alternativeUrl = "https://fantasy.formula1.com/en/statistics";
@@ -144,7 +194,10 @@ export async function scrapeConstructorFantasyData(): Promise<string> {
           pageOptions: {
             onlyMainContent: false, // Get full page
             waitForNetworkIdle: true,
-            javascript: true
+            javascript: true,
+            timeout: 45000, // 45 second timeout
+            waitFor: "table", // Wait for any table
+            waitForTimeout: 15000 // Wait 15 seconds after page load
           }
         })
       });
@@ -167,7 +220,7 @@ export async function scrapeConstructorFantasyData(): Promise<string> {
         content = data.content;
       }
       
-      console.log("Alternative content available:", !!content, "Length:", content.length);
+      console.log("Alternative URL content available:", !!content, "Length:", content.length);
     }
     
     if (!content) {
@@ -175,6 +228,12 @@ export async function scrapeConstructorFantasyData(): Promise<string> {
     } else {
       // Log the actual content
       console.log("Raw constructor content preview:", content.substring(0, 300));
+      
+      // Check for constructors related keywords to validate content
+      const hasConstructorData = content.toLowerCase().includes("constructor") && 
+        (content.toLowerCase().includes("team") || content.toLowerCase().includes("points"));
+      
+      console.log("Content appears to contain constructor data:", hasConstructorData);
     }
     
     return content;
@@ -360,67 +419,33 @@ Drivers Table FORMAT EXAMPLE (NOT REAL DATA):
  */
 export async function extractConstructorData(content: string): Promise<ConstructorFantasyData[]> {
   try {
-    if (!content || content.trim().length < 10) {
-      throw new FantasyDataError("Empty or insufficient content received for constructors");
+    if (!content || content.trim().length < 100) {
+      throw new Error("Constructor content is too short or empty");
     }
     
-    console.log("Raw constructor content length:", content.length);
+    // Clean and normalize the content
+    const cleanContent = content.replace(/\r\n/g, '\n').trim();
+    console.log("Raw constructor content length:", cleanContent.length);
+    
     console.log("Extracting constructor data with AI using structured output...");
-    
-    // Pre-process content to improve extraction quality
-    let processedContent = content;
-    
-    // Check if we've received HTML content from Jina
-    if (content.includes("<html") || content.includes("<!DOCTYPE")) {
-      console.log("Received HTML content - extracting tables...");
-      
-      // Focus on content more likely to contain constructor data
-      if (content.includes("constructor") && content.includes("points")) {
-        // Extract just content with constructor tables
-        processedContent = content;
-      }
-    }
-    
-    // Add specific table markers if they don't exist
-    if (!processedContent.includes("Constructors Table")) {
-      processedContent = "## F1 Fantasy 2025 Constructors Table\n\n" + processedContent;
-    }
-    
-    // Look for constructor data in the markdown content or HTML
-    const cleanContent = `
-The F1 Fantasy 2025 constructor data extracted from the website:
 
-IMPORTANT - BELOW IS THE ACTUAL CONTENT TO EXTRACT FROM:
-${processedContent}
-
-NOTE: The following is just a template format example and NOT real data - DO NOT use these specific values:
-Constructors Table FORMAT EXAMPLE (NOT REAL DATA):
-1. McLaren, $30.3M, 71 points
-2. Mercedes, $23.0M, 67 points
-3. Ferrari, $27.4M, 36 points
-4. Red Bull Racing, $25.1M, 19 points
-5. Haas, $7.6M, 14 points
-`;
-    
-    // Define schema for structured output
     const constructorSchema = {
       type: "object",
       properties: {
         constructors: {
           type: "array",
-          description: "List of all F1 constructors with their current fantasy data",
           items: {
             type: "object",
             properties: {
-              name: {
+              name: { 
                 type: "string",
-                description: "Full name of the constructor/team exactly as displayed"
+                description: "Full team name exactly as displayed (e.g., 'McLaren', 'Ferrari', etc.)"
               },
-              price: {
+              price: { 
                 type: "number",
                 description: "Constructor's price in millions without currency symbols (e.g., 30.3 not $30.3M)"
               },
-              points: {
+              points: { 
                 type: "number",
                 description: "Current fantasy points as an integer, can be negative (e.g., -20)"
               }
@@ -433,47 +458,44 @@ Constructors Table FORMAT EXAMPLE (NOT REAL DATA):
     };
     
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: process.env.OPENAI_MODEL || "gpt-4o",
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: `You are a specialized data extraction expert for Formula 1 Fantasy. 
-          Your task is to extract F1 Fantasy constructor/team data from the provided HTML or text content.
-          The content may contain HTML tags, tables, or plain text, and you need to find and extract the constructor information.
+          content: `You are an expert data extraction specialist that can find team/constructor data even in messy HTML content. 
+          Your sole purpose is to extract F1 Fantasy constructor data from webpages that may have complex structures.
           
-          Look for team names, their prices (in millions), and fantasy points.
-          Return results in the specified JSON schema format with no explanations.
+          IMPORTANT: Thoroughly examine the entire content for constructor/team data, even if it's buried deep in tables or divs.
+          Look for patterns of team names followed by prices ($XX.XM) and points values.
           
-          If you can't find clear constructor data in the content, return an empty array rather than making up data.
+          If the data is unclear or ambiguous, make your best effort to extract what's available.
           
-          IMPORTANT: Your task is to extract REAL data from the website content. 
-          Any example data provided is ONLY for format reference and should NOT be returned unless it matches exactly what's in the actual content.
+          NEVER return a template example - only extract real data found in the content.
+          Try VERY HARD to find at least some teams in the content.
           
-          Use the following JSON schema for your response:
-          ${JSON.stringify(constructorSchema, null, 2)}`
+          Return the data in JSON format that matches this schema: ${JSON.stringify(constructorSchema)}
+          `
         },
         {
           role: "user",
-          content: `Extract all constructor/team data from the F1 Fantasy website content below.
+          content: `Extract ALL constructor/team data from this F1 Fantasy content and return it as JSON. 
           
-          The content may include HTML tags, tables, or text data. Look carefully for constructor statistics containing:
-          - Team names (like "McLaren", "Ferrari", etc.)
-          - Price values (usually with $ and M, like $30.3M)
-          - Points values (could be positive or negative numbers)
+          The content contains team names, prices, and fantasy points, but they might be dispersed throughout the page.
+          Look for rows or sections containing information about the 10 F1 teams.
           
-          Make sure to:
-          - Extract ALL constructors listed (there should be approximately 10 teams)
-          - Keep exactly the same spelling and format of names
-          - Return precise price values as numbers (e.g., 30.3, not "$30.3M")
-          - Return exact points as numbers
-          - Return an empty array if you can't find clear constructor data
-          - Do NOT assume points values - only use what's in the data
+          Team names will be like: McLaren, Ferrari, Red Bull Racing, Mercedes, etc.
+          Prices typically appear with dollar signs and 'M' for millions, like $30.3M
+          Points can be positive or negative numbers.
           
-          CRITICAL: DO NOT copy values from my examples. My examples are for format only.
-          Only extract data that you actually see in the HTML/text content provided.
+          The content may be in HTML format with tables, divs, or other structures.
           
-          Format examples (NOT current data):
+          BE THOROUGH - search the content exhaustively for team data.
+          USE YOUR BEST JUDGMENT to identify team data patterns.
+          
+          If the content quality is poor, still extract whatever partial team data you can find.
+          
+          Format examples (NOT current data - DO NOT COPY THESE VALUES):
           1. McLaren, 30.3, 71
           2. Mercedes, 23.0, 67
           
@@ -481,27 +503,31 @@ Constructors Table FORMAT EXAMPLE (NOT REAL DATA):
           ${cleanContent}`
         }
       ],
-      temperature: 0.1 // Lower temperature for more deterministic outputs
+      temperature: 0.3 // Higher temperature for more creativity in extraction
     });
     
     const responseContent = response.choices[0].message.content;
     if (!responseContent) {
-      throw new DataExtractionError("Empty response from OpenAI for constructor data extraction");
+      throw new Error("Empty response from OpenAI for constructor data extraction");
     }
     
     try {
       const parsedData = JSON.parse(responseContent);
       
-      if (!parsedData.constructors || !Array.isArray(parsedData.constructors) || parsedData.constructors.length === 0) {
-        throw new DataExtractionError("Invalid or empty constructors array in OpenAI response");
+      if (!parsedData.constructors || !Array.isArray(parsedData.constructors)) {
+        console.error("Invalid constructors array in OpenAI response");
+        console.log("AI response content:", responseContent);
+        throw new Error("Invalid constructors array format");
       }
       
-      // The response is already validated by OpenAI against our schema
-      // but let's check data quality anyway
-      if (parsedData.constructors.length < 3) {
-        throw new DataExtractionError(`Only extracted ${parsedData.constructors.length} constructors, which seems too few`);
+      // If constructors array is empty, throw an error
+      if (parsedData.constructors.length === 0) {
+        console.error("Empty constructors array in OpenAI response");
+        console.log("AI response content:", responseContent);
+        throw new Error("No constructors found in content");
       }
       
+      // Log the number of constructors found
       console.log("Extracted constructor data with AI:", JSON.stringify(parsedData.constructors, null, 2));
       console.log("Number of constructors extracted with AI:", parsedData.constructors.length);
       
@@ -509,15 +535,11 @@ Constructors Table FORMAT EXAMPLE (NOT REAL DATA):
     } catch (e: unknown) {
       console.error("Error parsing AI response:", e);
       console.log("AI response content:", responseContent.substring(0, 500));
-      throw new DataExtractionError(`Error parsing AI constructor data response: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`Error parsing constructor data: ${e instanceof Error ? e.message : String(e)}`);
     }
   } catch (error: unknown) {
     console.error("Error extracting constructor data with AI:", error);
-    // Rethrow the error instead of returning fallback data
-    if (error instanceof DataExtractionError || error instanceof FantasyDataError) {
-      throw error;
-    }
-    throw new DataExtractionError(`Failed to extract constructor data: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Failed to extract constructor data: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -571,4 +593,65 @@ function getFallbackConstructorData(): ConstructorFantasyData[] {
     { name: "Alpine", price: 14.2, points: -25 },
     { name: "Racing Bulls", price: 9.8, points: -30 }
   ];
+}
+
+/**
+ * Generic function to scrape any webpage with Firecrawl
+ */
+export async function scrapeWebpage(url: string): Promise<string> {
+  try {
+    console.log(`Scraping webpage ${url} with Firecrawl...`);
+    
+    const response = await fetch(FIRECRAWL_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${FIRECRAWL_API_KEY}`
+      },
+      body: JSON.stringify({
+        url: url,
+        pageOptions: {
+          onlyMainContent: false,
+          waitForNetworkIdle: true,
+          javascript: true,
+          timeout: 30000, // 30 seconds
+          waitFor: 'table',
+          waitForTimeout: 10000, // 10 seconds
+          screenshotOptions: {
+            fullPage: true
+          }
+        }
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to scrape webpage ${url}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Check for nested content in data.data
+    let content = "";
+    if (data.data && data.data.content) {
+      content = data.data.content;
+    } else if (data.data && data.data.markdown) {
+      content = data.data.markdown;
+    } else if (data.markdown) {
+      content = data.markdown;
+    } else if (data.content) {
+      content = data.content;
+    }
+    
+    console.log(`Scraped content from ${url}, length: ${content.length}`);
+    
+    if (!content) {
+      console.error(`No content found for ${url}`);
+      console.error("Response keys:", Object.keys(data));
+    }
+    
+    return content;
+  } catch (error) {
+    console.error(`Error scraping webpage ${url}:`, error);
+    throw new Error(`Failed to scrape webpage ${url}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 } 

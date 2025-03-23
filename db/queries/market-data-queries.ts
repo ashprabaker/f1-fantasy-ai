@@ -161,15 +161,30 @@ export const updateMarketData = async (
   constructors: InsertMarketConstructor[]
 ) => {
   try {
-    // Clear existing data
-    await db.delete(marketDriversTable);
-    await db.delete(marketConstructorsTable);
-    
-    // Insert new data
-    await db.insert(marketDriversTable).values(drivers);
-    await db.insert(marketConstructorsTable).values(constructors);
-    
-    return true;
+    // Create a transaction to ensure all operations succeed or fail together
+    return await db.transaction(async (tx) => {
+      console.log(`Updating market data with ${drivers.length} drivers and ${constructors.length} constructors`);
+      
+      // Clear and update drivers if we have driver data
+      if (drivers.length > 0) {
+        await tx.delete(marketDriversTable);
+        await tx.insert(marketDriversTable).values(drivers);
+        console.log(`Successfully updated ${drivers.length} drivers`);
+      } else {
+        console.log("No driver data to update - skipping driver update");
+      }
+      
+      // Clear and update constructors if we have constructor data
+      if (constructors.length > 0) {
+        await tx.delete(marketConstructorsTable);
+        await tx.insert(marketConstructorsTable).values(constructors);
+        console.log(`Successfully updated ${constructors.length} constructors`);
+      } else {
+        console.log("No constructor data to update - skipping constructor update");
+      }
+      
+      return true;
+    });
   } catch (error) {
     console.error("Error updating market data:", error);
     throw new Error("Failed to update market data");

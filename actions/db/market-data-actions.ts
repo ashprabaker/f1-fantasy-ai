@@ -25,6 +25,10 @@ import {
   ConstructorFantasyData
 } from "@/lib/services/scraping-service"
 import { DataExtractionError, FantasyDataError } from "@/lib/services/custom-errors"
+import { scrapeWebpage } from "@/lib/services/firecrawl-service"
+import * as JinaService from "@/lib/services/jina-service"
+import { db } from "@/db/db"
+import { eq } from "drizzle-orm"
 
 // Define a type for errors with response details
 interface ApiError extends Error {
@@ -283,37 +287,94 @@ async function startBackgroundSync() {
     
     // Get constructor data
     let fantasyConstructors: ConstructorFantasyData[] = []
+    console.log("[F1-SYNC] Starting constructor fantasy data scraping...");
     try {
-      console.log("[F1-SYNC] Starting constructor fantasy data scraping...")
       const startTime = Date.now()
-      const constructorContent = await withRetry(() => scrapeConstructorFantasyData(), {
-        maxRetries: 3,
-        initialDelay: 2000,
-        maxDelay: 10000,
-        factor: 2,
-        retryOnError: (err) => {
-          // Retry on any error with the scraper
-          console.log(`[F1-SYNC] Constructor scraper error: ${err.message || err}`);
-          return true;
+      console.log("Attempting to scrape constructor data with Jina AI...");
+      
+      // We'll try up to 3 URLs to ensure we get constructor data
+      const potentialUrls = [
+        "https://fantasy.formula1.com/en/statistics/details?tab=constructor&filter=fPoints",
+        "https://fantasy.formula1.com/en/statistics",
+        "https://fantasy.formula1.com/en/statistics/details"
+      ];
+      
+      // Let's try each URL until we get good content
+      let constructorContent = "";
+      
+      for (const url of potentialUrls) {
+        try {
+          console.log(`Scraping ${url} with Jina AI...`);
+          constructorContent = await withRetry(() => JinaService.scrapeUrl(url), {
+            maxRetries: 2,
+            initialDelay: 2000,
+            maxDelay: 5000,
+            factor: 2,
+            retryOnError: (err) => {
+              // Retry on any error
+              console.log(`[F1-SYNC] Scraping error for ${url}: ${err.message || err}`);
+              return true;
+            }
+          });
+          
+          // If we got substantial content, break the loop
+          if (constructorContent && constructorContent.length > 3000) {
+            console.log(`Successfully scraped content from ${url} with length ${constructorContent.length}`);
+            break;
+          } else {
+            console.log(`Content from ${url} too short (${constructorContent.length}), trying another URL`);
+          }
+        } catch (err) {
+          console.error(`Error scraping ${url}:`, err);
+          // Continue to next URL
         }
-      });
+      }
+      
+      // If we still didn't get good content, try the direct API with Jina
+      if (!constructorContent || constructorContent.length < 2000) {
+        console.log("All URL attempts failed, trying direct constructor scraping...");
+        constructorContent = await withRetry(() => JinaService.scrapeConstructorFantasyData(), {
+          maxRetries: 3,
+          initialDelay: 2000,
+          maxDelay: 10000,
+          factor: 2,
+          retryOnError: (err) => {
+            // Retry on any error with the scraper
+            console.log(`[F1-SYNC] Constructor scraper error: ${err.message || err}`);
+            return true;
+          }
+        });
+      }
+      
       console.log(`[F1-SYNC] Constructor scraping completed in ${Date.now() - startTime}ms`)
       console.log(`[F1-SYNC] Constructor content length: ${constructorContent.length}`)
       
+      if (constructorContent.length < 1000) {
+        throw new Error("Constructor content too short for reliable extraction");
+      }
+      
       console.log("[F1-SYNC] Extracting constructor data with AI...")
       const extractStartTime = Date.now()
-      fantasyConstructors = await withRetry(() => extractConstructorData(constructorContent), {
-        maxRetries: 2,
-        initialDelay: 1000,
-        maxDelay: 5000,
-        factor: 1.5,
-        retryOnError: (err) => {
-          // Only retry data extraction on specific errors
-          return !(err instanceof DataExtractionError);
-        }
-      });
-      console.log(`[F1-SYNC] Constructor extraction completed in ${Date.now() - extractStartTime}ms`)
-      console.log(`[F1-SYNC] Extracted ${fantasyConstructors.length} constructors from F1 Fantasy`)
+      
+      // Try multiple extraction approaches if needed
+      try {
+        fantasyConstructors = await withRetry(() => extractConstructorData(constructorContent), {
+          maxRetries: 2,
+          initialDelay: 1000,
+          maxDelay: 5000,
+          factor: 1.5,
+          retryOnError: (err) => {
+            console.log("[F1-SYNC] Constructor extraction error, retrying:", err.message);
+            return true; // Always retry extraction
+          }
+        });
+        
+        console.log(`[F1-SYNC] Constructor extraction completed in ${Date.now() - extractStartTime}ms`)
+        console.log(`[F1-SYNC] Extracted ${fantasyConstructors.length} constructors from F1 Fantasy`)
+      } catch (error) {
+        console.error("[F1-SYNC] Failed to extract constructor data with multiple retries:", error);
+        throw error;
+      }
     } catch (error: unknown) {
       const apiError = error as ApiError;
       console.error("[F1-SYNC] Error getting F1 Fantasy constructor data:", apiError)
@@ -324,9 +385,8 @@ async function startBackgroundSync() {
         name: apiError.name
       });
       
-      // Log error but continue with just driver data
-      console.log("[F1-SYNC] Continuing with driver data only due to constructor data error")
-      fantasyConstructors = [] // Ensure empty array for safety
+      // Throw error to stop the sync
+      throw new Error(`Failed to get constructor data: ${apiError.message}`);
     }
     
     // STEP 3: Prepare the driver data by merging API and Fantasy data
