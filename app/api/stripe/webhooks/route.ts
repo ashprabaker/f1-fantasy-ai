@@ -1,10 +1,13 @@
-import { manageSubscriptionStatusChange, updateStripeCustomer } from "@/actions/stripe-actions";
-import { stripe } from "@/lib/stripe";
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
 
 // Use Edge Runtime for this route
 export const runtime = 'edge';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2025-02-24.acacia",
+  typescript: true,
+});
 
 // Relevant events to process
 const relevantEvents = new Set([
@@ -68,26 +71,42 @@ export async function POST(req: NextRequest) {
             client_reference_id: checkoutSession.client_reference_id ? 'Present' : 'Missing'
           });
           
-          if (!checkoutSession.customer || !checkoutSession.subscription) {
-            return new Response("Missing customer or subscription ID", { status: 400 });
+          if (!checkoutSession.customer || !checkoutSession.subscription || !checkoutSession.client_reference_id) {
+            return new Response(JSON.stringify({
+              error: "Missing required data in checkout session",
+              customer: checkoutSession.customer ? 'Present' : 'Missing',
+              subscription: checkoutSession.subscription ? 'Present' : 'Missing',
+              client_reference_id: checkoutSession.client_reference_id ? 'Present' : 'Missing'
+            }), { 
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
           }
           
-          if (!checkoutSession.client_reference_id) {
-            console.warn('[WEBHOOK-DEBUG] Missing client_reference_id in checkout session');
-            return new Response("Missing client_reference_id", { status: 400 });
+          // Forward the event data to a server action that can handle DB operations
+          const response = await fetch(new URL('/api/stripe/process-webhook', req.url).toString(), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-webhook-secret': process.env.INTERNAL_WEBHOOK_SECRET || 'internal-secret'
+            },
+            body: JSON.stringify({
+              type: event.type,
+              data: {
+                userId: checkoutSession.client_reference_id,
+                subscriptionId: checkoutSession.subscription as string,
+                customerId: checkoutSession.customer as string
+              }
+            })
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[WEBHOOK-DEBUG] Error from webhook processor:', errorText);
+            return new Response(errorText, { status: 500 });
           }
           
-          try {
-            await updateStripeCustomer(
-              checkoutSession.client_reference_id,
-              checkoutSession.subscription as string,
-              checkoutSession.customer as string
-            );
-            console.log('[WEBHOOK-DEBUG] Successfully updated stripe customer');
-          } catch (updateError) {
-            console.error('[WEBHOOK-DEBUG] Error in updateStripeCustomer:', updateError);
-            throw updateError;
-          }
+          console.log('[WEBHOOK-DEBUG] Successfully forwarded checkout event to processor');
           break;
         }
           
@@ -96,21 +115,41 @@ export async function POST(req: NextRequest) {
           const subscription = event.data.object as Stripe.Subscription;
           console.log('[WEBHOOK-DEBUG] Processing subscription event with ID:', subscription.id);
           
-          if (!subscription.items?.data[0]?.price?.product) {
-            return new Response("Missing product in subscription", { status: 400 });
+          if (!subscription.items?.data[0]?.price?.product || !subscription.customer) {
+            return new Response(JSON.stringify({
+              error: "Missing required data in subscription",
+              items: subscription.items ? 'Present' : 'Missing',
+              customer: subscription.customer ? 'Present' : 'Missing'
+            }), { 
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
           }
           
-          try {
-            await manageSubscriptionStatusChange(
-              subscription.id,
-              subscription.customer as string,
-              subscription.items.data[0].price.product as string
-            );
-            console.log('[WEBHOOK-DEBUG] Successfully managed subscription status change');
-          } catch (manageError) {
-            console.error('[WEBHOOK-DEBUG] Error in manageSubscriptionStatusChange:', manageError);
-            throw manageError;
+          // Forward the event data to a server action that can handle DB operations
+          const response = await fetch(new URL('/api/stripe/process-webhook', req.url).toString(), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-webhook-secret': process.env.INTERNAL_WEBHOOK_SECRET || 'internal-secret'
+            },
+            body: JSON.stringify({
+              type: event.type,
+              data: {
+                subscriptionId: subscription.id,
+                customerId: subscription.customer as string,
+                productId: subscription.items.data[0].price.product as string
+              }
+            })
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[WEBHOOK-DEBUG] Error from webhook processor:', errorText);
+            return new Response(errorText, { status: 500 });
           }
+          
+          console.log('[WEBHOOK-DEBUG] Successfully forwarded subscription event to processor');
           break;
         }
           

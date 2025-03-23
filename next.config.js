@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['sharp'],
+    serverExternalPackages: ['sharp'],
   },
   // Special configuration for Stripe webhooks
   api: {
