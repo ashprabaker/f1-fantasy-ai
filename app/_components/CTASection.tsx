@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
-import CheckeredFlag from './CheckeredFlag';
 
 export default function CTASection() {
   const { userId } = useAuth();
