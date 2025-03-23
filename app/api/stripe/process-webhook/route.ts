@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import postgres from "postgres";
+import Stripe from "stripe";
 
 // This endpoint processes Stripe webhook events
 export async function POST(req: NextRequest) {
@@ -22,10 +23,10 @@ export async function POST(req: NextRequest) {
     // Handle the event
     switch (event.type) {
       case "checkout.session.completed": {
-        const session = event.data.object as any;
+        const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.client_reference_id;
-        const customerId = session.customer;
-        const subscriptionId = session.subscription;
+        const customerId = session.customer as string;
+        const subscriptionId = session.subscription as string;
 
         if (userId && customerId && subscriptionId) {
           // Connect to database directly
@@ -53,9 +54,9 @@ export async function POST(req: NextRequest) {
       
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
-        const subscription = event.data.object as any;
+        const subscription = event.data.object as Stripe.Subscription;
         const status = subscription.status;
-        const customerId = subscription.customer;
+        const customerId = subscription.customer as string;
         
         // If subscription is not active/trialing, set membership to free
         if (status !== "active" && status !== "trialing") {
