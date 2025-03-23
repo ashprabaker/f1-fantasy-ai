@@ -44,6 +44,15 @@
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
 
+  /* Racing colors */
+  --racing-red: #E10600;
+  --racing-blue: #0090D0;
+  --racing-silver: #F0F0F0;
+  --racing-carbon: #1E1E1E;
+  --racing-yellow: #FFF200;
+  --racing-dark: #15151E;
+  --racing-mild: #FF8700;
+
   @keyframes accordion-down {
     from {
       height: 0;
@@ -61,6 +70,42 @@
       height: 0;
     }
   }
+}
+
+/* F1 animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes slide-in {
+  0% { transform: translateX(-100%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slide-up {
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes zoom-in {
+  0% { transform: scale(0.95); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes checkered-flag {
+  0% { background-position: 0 0; }
+  100% { background-position: 20px 20px; }
+}
+
+@keyframes race-line {
+  0% { stroke-dashoffset: 1000; }
+  100% { stroke-dashoffset: 0; }
 }
 
 :root {
@@ -139,4 +184,45 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* F1 utility classes */
+.racing-shadow {
+  box-shadow: 0 4px 14px rgba(225, 6, 0, 0.25);
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 4s ease-in-out infinite;
+}
+
+.animate-slide-in {
+  animation: slide-in 0.6s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.6s ease-out;
+}
+
+.animate-zoom-in {
+  animation: zoom-in 0.6s ease-out;
+}
+
+.animate-checkered-flag {
+  animation: checkered-flag 2s linear infinite;
+}
+
+.animate-race-line {
+  animation: race-line 1.5s ease-out;
+}
+
+.bg-checkered {
+  background-image: repeating-conic-gradient(#000 0% 25%, transparent 0% 50%) 50% / 20px 20px;
+}
+
+.bg-racing-stripe {
+  background-image: linear-gradient(90deg, transparent, #E10600, transparent);
 }
