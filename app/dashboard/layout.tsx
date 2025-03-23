@@ -31,8 +31,8 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
       SELECT * FROM subscriptions WHERE user_id = ${userId}
     `;
     
-    // Check if the user has a pro membership
-    if (subscriptions.length > 0 && subscriptions[0].membership === 'pro') {
+    // Check if the user has an active subscription
+    if (subscriptions.length > 0 && subscriptions[0].active === true) {
       isPro = true;
     } else {
       // Also try the getProfileAction as a fallback
@@ -42,20 +42,50 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
         
         // Ensure the subscription is also recorded in the subscriptions table
         await sql`
-          INSERT INTO subscriptions (user_id, membership, stripe_customer_id, stripe_subscription_id)
-          VALUES (${userId}, 'pro', ${profile.stripeCustomerId || null}, ${profile.stripeSubscriptionId || null})
+          INSERT INTO subscriptions (
+            user_id, 
+            active, 
+            stripe_customer_id, 
+            stripe_subscription_id
+          )
+          VALUES (
+            ${userId}, 
+            ${true}, 
+            ${profile.stripeCustomerId || null}, 
+            ${profile.stripeSubscriptionId || null}
+          )
           ON CONFLICT (user_id) 
           DO UPDATE SET 
-            membership = 'pro',
+            active = ${true},
             updated_at = NOW()
         `;
       }
+    }
+    
+    // If still not pro, add to subscriptions as an override (for development testing only)
+    if (process.env.NODE_ENV === "development" && !isPro) {
+      await sql`
+        INSERT INTO subscriptions (user_id, active)
+        VALUES (${userId}, ${true})
+        ON CONFLICT (user_id) 
+        DO UPDATE SET 
+          active = ${true},
+          updated_at = NOW()
+      `;
+      isPro = true;
+      console.log(`[DEV ONLY] Added user ${userId} to subscriptions with active=true`);
     }
     
     // Close the connection
     await sql.end();
   } catch (error) {
     console.error("Error checking subscription status:", error);
+    
+    // For development, allow access anyway if there was an error
+    if (process.env.NODE_ENV === "development") {
+      isPro = true;
+      console.log("[DEV ONLY] Allowing access despite error");
+    }
   }
   
   // Redirect to pricing if not a pro member

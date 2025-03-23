@@ -34,11 +34,21 @@ export async function POST(req: NextRequest) {
           
           // Add/update the subscription in both tables
           await sql`
-            INSERT INTO subscriptions (user_id, membership, stripe_customer_id, stripe_subscription_id)
-            VALUES (${userId}, 'pro', ${customerId}, ${subscriptionId})
+            INSERT INTO subscriptions (
+              user_id, 
+              active, 
+              stripe_customer_id, 
+              stripe_subscription_id
+            )
+            VALUES (
+              ${userId}, 
+              ${true}, 
+              ${customerId}, 
+              ${subscriptionId}
+            )
             ON CONFLICT (user_id) 
             DO UPDATE SET 
-              membership = 'pro',
+              active = ${true},
               stripe_customer_id = ${customerId},
               stripe_subscription_id = ${subscriptionId},
               updated_at = NOW()
@@ -58,7 +68,7 @@ export async function POST(req: NextRequest) {
         const status = subscription.status;
         const customerId = subscription.customer as string;
         
-        // If subscription is not active/trialing, set membership to free
+        // If subscription is not active/trialing, set active to false
         if (status !== "active" && status !== "trialing") {
           // Connect to database directly
           const sql = postgres(process.env.DATABASE_URL!);
@@ -72,14 +82,14 @@ export async function POST(req: NextRequest) {
           if (users.length > 0) {
             const userId = users[0].user_id;
             
-            // Update subscription to free
+            // Update subscription to inactive
             await sql`
               UPDATE subscriptions 
-              SET membership = 'free', updated_at = NOW()
+              SET active = ${false}, updated_at = NOW()
               WHERE user_id = ${userId}
             `;
             
-            console.log(`User ${userId} downgraded to free membership due to subscription ${status}`);
+            console.log(`User ${userId} downgraded due to subscription ${status}`);
           }
           
           // Close the connection

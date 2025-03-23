@@ -22,11 +22,21 @@ export async function fixSubscription(userId: string | null | undefined) {
       
       // Update subscriptions table
       await sql`
-        INSERT INTO subscriptions (user_id, membership, stripe_customer_id, stripe_subscription_id)
-        VALUES (${userId}, 'pro', ${result.data.stripeCustomerId || null}, ${result.data.stripeSubscriptionId || null})
+        INSERT INTO subscriptions (
+          user_id, 
+          active, 
+          stripe_customer_id, 
+          stripe_subscription_id
+        )
+        VALUES (
+          ${userId}, 
+          ${true}, 
+          ${result.data.stripeCustomerId || null}, 
+          ${result.data.stripeSubscriptionId || null}
+        )
         ON CONFLICT (user_id) 
         DO UPDATE SET 
-          membership = 'pro',
+          active = ${true},
           stripe_customer_id = ${result.data.stripeCustomerId || null},
           stripe_subscription_id = ${result.data.stripeSubscriptionId || null},
           updated_at = NOW()
