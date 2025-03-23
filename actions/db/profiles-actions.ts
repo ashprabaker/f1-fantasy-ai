@@ -5,10 +5,10 @@ import { InsertProfile, SelectProfile } from "@/db/schema";
 import { ActionState } from "@/types";
 
 // Rate limit configuration
-const FREE_RECOMMENDATION_LIMIT = 5; // 5 recommendations per day for free users
-const PRO_RECOMMENDATION_LIMIT = 20; // 20 recommendations per day for pro users
-const FREE_SYNC_LIMIT = 3; // 3 syncs per day for free users
-const PRO_SYNC_LIMIT = 10; // 10 syncs per day for pro users
+const FREE_RECOMMENDATION_LIMIT = 75; // 75 recommendations per day for free users
+const PRO_RECOMMENDATION_LIMIT = 75; // 75 recommendations per day for pro users
+const FREE_SYNC_LIMIT = 75; // 75 syncs per day for free users
+const PRO_SYNC_LIMIT = 75; // 75 syncs per day for pro users
 const DAY_IN_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const HOUR_IN_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 

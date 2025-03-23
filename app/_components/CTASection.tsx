@@ -28,10 +28,6 @@ export default function CTASection() {
           </div>
           
           <div className="relative z-10 py-16 px-8 md:px-16 text-center">
-            <div className="flex justify-center mb-6">
-              <CheckeredFlag size="lg" />
-            </div>
-            
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               Ready to dominate your F1 Fantasy league?
             </h2>
