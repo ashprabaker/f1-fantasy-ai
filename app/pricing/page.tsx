@@ -20,8 +20,24 @@ export default function PricingPage() {
     
     if (userId) {
       const fetchProfile = async () => {
-        const profileResult = await getProfile(userId)
-        setIsPro(profileResult.isSuccess && profileResult.data?.membership === "pro")
+        try {
+          // First try to fetch from the profile
+          const profileResult = await getProfile(userId)
+          
+          if (profileResult.isSuccess && profileResult.data?.membership === "pro") {
+            setIsPro(true)
+            return
+          }
+          
+          // If not found in profile, check directly with the subscriptions table
+          const response = await fetch(`/api/check-subscription?userId=${userId}`)
+          if (response.ok) {
+            const data = await response.json()
+            setIsPro(data.isPro)
+          }
+        } catch (error) {
+          console.error("Error fetching subscription status:", error)
+        }
       }
       
       fetchProfile()

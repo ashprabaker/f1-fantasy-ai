@@ -1,93 +1,99 @@
-import { updateStripeCustomer, manageSubscriptionStatusChange } from "@/actions/stripe-actions";
 import { NextRequest, NextResponse } from "next/server";
+import { stripe } from "@/lib/stripe";
+import postgres from "postgres";
 
-// Use Node.js runtime to be able to access database
-export const runtime = 'nodejs';
-
+// This endpoint processes Stripe webhook events
 export async function POST(req: NextRequest) {
-  // Verify internal webhook secret
-  const secret = req.headers.get('x-webhook-secret');
-  
-  if (secret !== (process.env.INTERNAL_WEBHOOK_SECRET || 'internal-secret')) {
-    console.error('Invalid internal webhook secret');
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const body = await req.text();
+  const sig = req.headers.get("stripe-signature") as string;
+
+  if (!sig) {
+    return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
   }
-  
+
   try {
-    const { type, data } = await req.json();
-    
-    console.log(`[WEBHOOK-PROCESSOR] Processing ${type} event`);
-    
-    switch (type) {
-      case 'checkout.session.completed': {
-        const { userId, subscriptionId, customerId } = data;
-        
-        if (!userId || !subscriptionId || !customerId) {
-          return NextResponse.json({ 
-            error: 'Missing required data',
-            userId: userId ? 'Present' : 'Missing',
-            subscriptionId: subscriptionId ? 'Present' : 'Missing',
-            customerId: customerId ? 'Present' : 'Missing'
-          }, { status: 400 });
-        }
-        
-        try {
-          const result = await updateStripeCustomer(
-            userId,
-            subscriptionId,
-            customerId
-          );
+    // Verify the webhook signature
+    const event = stripe.webhooks.constructEvent(
+      body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    );
+
+    // Handle the event
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as any;
+        const userId = session.client_reference_id;
+        const customerId = session.customer;
+        const subscriptionId = session.subscription;
+
+        if (userId && customerId && subscriptionId) {
+          // Connect to database directly
+          const sql = postgres(process.env.DATABASE_URL!);
           
-          console.log(`[WEBHOOK-PROCESSOR] Successfully updated customer:`, result?.membership);
-          return NextResponse.json({ success: true });
-        } catch (error) {
-          console.error('[WEBHOOK-PROCESSOR] Error updating customer:', error);
-          return NextResponse.json({ 
-            error: 'Failed to update customer',
-            message: error instanceof Error ? error.message : 'Unknown error'
-          }, { status: 500 });
+          // Add/update the subscription in both tables
+          await sql`
+            INSERT INTO subscriptions (user_id, membership, stripe_customer_id, stripe_subscription_id)
+            VALUES (${userId}, 'pro', ${customerId}, ${subscriptionId})
+            ON CONFLICT (user_id) 
+            DO UPDATE SET 
+              membership = 'pro',
+              stripe_customer_id = ${customerId},
+              stripe_subscription_id = ${subscriptionId},
+              updated_at = NOW()
+          `;
+          
+          // Close the connection
+          await sql.end();
+          
+          console.log(`User ${userId} upgraded to pro membership via checkout session`);
         }
+        break;
       }
       
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted': {
-        const { subscriptionId, customerId, productId } = data;
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object as any;
+        const status = subscription.status;
+        const customerId = subscription.customer;
         
-        if (!subscriptionId || !customerId || !productId) {
-          return NextResponse.json({ 
-            error: 'Missing required data',
-            subscriptionId: subscriptionId ? 'Present' : 'Missing',
-            customerId: customerId ? 'Present' : 'Missing',
-            productId: productId ? 'Present' : 'Missing'
-          }, { status: 400 });
-        }
-        
-        try {
-          const result = await manageSubscriptionStatusChange(
-            subscriptionId,
-            customerId,
-            productId
-          );
+        // If subscription is not active/trialing, set membership to free
+        if (status !== "active" && status !== "trialing") {
+          // Connect to database directly
+          const sql = postgres(process.env.DATABASE_URL!);
           
-          console.log(`[WEBHOOK-PROCESSOR] Successfully managed subscription:`, result);
-          return NextResponse.json({ success: true });
-        } catch (error) {
-          console.error('[WEBHOOK-PROCESSOR] Error managing subscription:', error);
-          return NextResponse.json({ 
-            error: 'Failed to manage subscription',
-            message: error instanceof Error ? error.message : 'Unknown error'
-          }, { status: 500 });
+          // Find user by stripe customer ID
+          const users = await sql`
+            SELECT user_id FROM subscriptions 
+            WHERE stripe_customer_id = ${customerId}
+          `;
+          
+          if (users.length > 0) {
+            const userId = users[0].user_id;
+            
+            // Update subscription to free
+            await sql`
+              UPDATE subscriptions 
+              SET membership = 'free', updated_at = NOW()
+              WHERE user_id = ${userId}
+            `;
+            
+            console.log(`User ${userId} downgraded to free membership due to subscription ${status}`);
+          }
+          
+          // Close the connection
+          await sql.end();
         }
+        break;
       }
-      
-      default:
-        return NextResponse.json({ error: `Unsupported event type: ${type}` }, { status: 400 });
     }
-  } catch (error) {
-    console.error('[WEBHOOK-PROCESSOR] Error processing webhook:', error);
-    return NextResponse.json({ 
-      error: 'Error processing webhook',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+
+    return NextResponse.json({ received: true });
+  } catch (err) {
+    console.error("Webhook error:", err);
+    return NextResponse.json(
+      { error: "Webhook handler failed" },
+      { status: 400 }
+    );
   }
 } 
