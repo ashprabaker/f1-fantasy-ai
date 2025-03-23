@@ -6,7 +6,8 @@
 
 const BASE_URL = "https://api.openf1.org/v1"
 
-import { pgTable, text, uuid, timestamp, doublePrecision, integer } from "drizzle-orm/pg-core";
+// Remove unused imports
+// import { pgTable, text, uuid, timestamp, doublePrecision, integer } from "drizzle-orm/pg-core";
 
 // Add error type definitions
 interface ApiError extends Error {
