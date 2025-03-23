@@ -1,7 +1,14 @@
 import { manageSubscriptionStatusChange, updateStripeCustomer } from "@/actions/stripe-actions";
 import { stripe } from "@/lib/stripe";
-import { headers } from "next/headers";
+import { NextRequest } from "next/server";
 import Stripe from "stripe";
+
+// Disable body parsing for this route
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
 const relevantEvents = new Set([
   "checkout.session.completed",
@@ -9,18 +16,19 @@ const relevantEvents = new Set([
   "customer.subscription.deleted"
 ]);
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  // Get raw request body as text
   const body = await req.text();
-  const headersList = await headers();
-  const signature = headersList.get("Stripe-Signature") as string;
+  const signature = req.headers.get("Stripe-Signature") as string;
   
   let event: Stripe.Event;
   
   try {
     console.log('[WEBHOOK-DEBUG] Received webhook request');
     console.log('[WEBHOOK-DEBUG] Signature:', signature ? 'Present' : 'Missing');
-    console.log('[WEBHOOK-DEBUG] Attempting to construct event with webhook secret length:', 
-            process.env.STRIPE_WEBHOOK_SECRET ? process.env.STRIPE_WEBHOOK_SECRET.length : 0);
+    console.log('[WEBHOOK-DEBUG] Body length:', body.length);
+    console.log('[WEBHOOK-DEBUG] Webhook secret length:', process.env.STRIPE_WEBHOOK_SECRET?.length || 0);
+    
     event = stripe.webhooks.constructEvent(
       body,
       signature,

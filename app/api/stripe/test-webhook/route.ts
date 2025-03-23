@@ -1,7 +1,14 @@
 import { stripe } from "@/lib/stripe";
-import { headers } from "next/headers";
+import { NextRequest } from "next/server";
 
-export async function POST(req: Request) {
+// Disable body parsing for this route
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+export async function POST(req: NextRequest) {
   try {
     // Log basic request info
     console.log("[WEBHOOK-TEST] Received test webhook request");
@@ -11,8 +18,7 @@ export async function POST(req: Request) {
     console.log("[WEBHOOK-TEST] Request body length:", body.length);
     
     // Get the Stripe signature
-    const headersList = await headers();
-    const signature = headersList.get("Stripe-Signature");
+    const signature = req.headers.get("Stripe-Signature");
     console.log("[WEBHOOK-TEST] Signature present:", !!signature);
     
     // Log webhook secret info
