@@ -6,6 +6,27 @@
 
 const BASE_URL = "https://api.openf1.org/v1"
 
+import { pgTable, text, uuid, timestamp, doublePrecision, integer } from "drizzle-orm/pg-core";
+
+// Add error type definitions
+interface ApiError extends Error {
+  code?: string;
+  response?: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    data: unknown;
+  };
+  request?: {
+    method?: string;
+    path?: string;
+    host?: string;
+    protocol?: string;
+  };
+  status?: number;
+  cause?: unknown;
+}
+
 export interface Meeting {
   meeting_key: number
   meeting_code: string
@@ -85,15 +106,16 @@ export async function getMeetings(year: number): Promise<Meeting[]> {
     const data = await response.json()
     console.log(`[F1-SYNC] Successfully parsed meetings JSON, count: ${data.length}`)
     return data
-  } catch (error: any) {
-    console.error(`[F1-SYNC] Error fetching meetings for year ${year}:`, error)
+  } catch (error: unknown) {
+    const apiError = error as ApiError
+    console.error(`[F1-SYNC] Error fetching meetings for year ${year}:`, apiError)
     console.error(`[F1-SYNC] Error details:`, {
-      message: error.message,
-      code: error.code,
-      name: error.name,
-      stack: error.stack
+      message: apiError.message,
+      code: apiError.code,
+      name: apiError.name,
+      stack: apiError.stack
     })
-    throw error
+    throw apiError
   }
 }
 
@@ -120,15 +142,16 @@ export async function getSessions(meetingKey: number): Promise<Session[]> {
     const data = await response.json()
     console.log(`[F1-SYNC] Successfully parsed sessions JSON, count: ${data.length}`)
     return data
-  } catch (error: any) {
-    console.error(`[F1-SYNC] Error fetching sessions for meeting ${meetingKey}:`, error)
+  } catch (error: unknown) {
+    const apiError = error as ApiError
+    console.error(`[F1-SYNC] Error fetching sessions for meeting ${meetingKey}:`, apiError)
     console.error(`[F1-SYNC] Error details:`, {
-      message: error.message,
-      code: error.code,
-      name: error.name,
-      stack: error.stack
+      message: apiError.message,
+      code: apiError.code,
+      name: apiError.name,
+      stack: apiError.stack
     })
-    throw error
+    throw apiError
   }
 }
 
@@ -155,15 +178,16 @@ export async function getDrivers(sessionKey: number): Promise<Driver[]> {
     const data = await response.json()
     console.log(`[F1-SYNC] Successfully parsed drivers JSON, count: ${data.length}`)
     return data
-  } catch (error: any) {
-    console.error(`[F1-SYNC] Error fetching drivers for session ${sessionKey}:`, error)
+  } catch (error: unknown) {
+    const apiError = error as ApiError
+    console.error(`[F1-SYNC] Error fetching drivers for session ${sessionKey}:`, apiError)
     console.error(`[F1-SYNC] Error details:`, {
-      message: error.message,
-      code: error.code,
-      name: error.name,
-      stack: error.stack
+      message: apiError.message,
+      code: apiError.code,
+      name: apiError.name,
+      stack: apiError.stack
     })
-    throw error
+    throw apiError
   }
 }
 
@@ -198,12 +222,13 @@ export async function getRaceResult(sessionKey: number): Promise<Record<number, 
         
         const driverPositions: Position[] = await response.json()
         positions[driver.driver_number] = driverPositions
-      } catch (error: any) {
-        console.error(`[F1-SYNC] Error fetching positions for driver ${driver.driver_number}:`, error)
+      } catch (error: unknown) {
+        const apiError = error as ApiError
+        console.error(`[F1-SYNC] Error fetching positions for driver ${driver.driver_number}:`, apiError)
         console.error(`[F1-SYNC] Error details:`, {
-          message: error.message,
-          code: error.code,
-          name: error.name
+          message: apiError.message,
+          code: apiError.code,
+          name: apiError.name
         })
         // Continue with next driver even if this one fails
       }
@@ -228,13 +253,14 @@ export async function getRaceResult(sessionKey: number): Promise<Record<number, 
     
     console.log(`[F1-SYNC] Successfully processed race results for ${Object.keys(results).length} drivers`)
     return results
-  } catch (error: any) {
-    console.error(`[F1-SYNC] Error processing race results:`, error)
+  } catch (error: unknown) {
+    const apiError = error as ApiError
+    console.error(`[F1-SYNC] Error processing race results:`, apiError)
     console.error(`[F1-SYNC] Error details:`, {
-      message: error.message,
-      code: error.code,
-      name: error.name,
-      stack: error.stack
+      message: apiError.message,
+      code: apiError.code,
+      name: apiError.name,
+      stack: apiError.stack
     })
     return {}
   }
@@ -251,26 +277,6 @@ export async function getCurrentSeasonData() {
     // Explicitly use 2025 season data
     const currentYear = 2025
     console.log(`[F1-SYNC] Fetching data for ${currentYear} season`)
-    
-    // Use longer timeout for potentially slow requests
-    const fetchWithTimeout = async (url: string, options = {}) => {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
-      
-      try {
-        const response = await fetch(url, { 
-          ...options,
-          signal: controller.signal,
-          headers: { 
-            'User-Agent': 'F1-Fantasy-AI/1.0',
-            ...(options as any).headers
-          }
-        })
-        return response
-      } finally {
-        clearTimeout(timeoutId)
-      }
-    }
     
     const meetings = await getMeetings(currentYear)
     
@@ -311,13 +317,14 @@ export async function getCurrentSeasonData() {
           const anySession = sessions[0]
           drivers = await getDrivers(anySession.session_key)
         }
-      } catch (error: any) {
-        console.error(`[F1-SYNC] Error fetching session details:`, error)
+      } catch (error: unknown) {
+        const apiError = error as ApiError
+        console.error(`[F1-SYNC] Error fetching session details:`, apiError)
         console.error(`[F1-SYNC] Error details:`, {
-          message: error.message,
-          code: error.code,
-          name: error.name,
-          stack: error.stack
+          message: apiError.message,
+          code: apiError.code,
+          name: apiError.name,
+          stack: apiError.stack
         })
         // Continue with empty data
       }
@@ -332,13 +339,14 @@ export async function getCurrentSeasonData() {
       drivers,
       results
     }
-  } catch (error: any) {
-    console.error(`[F1-SYNC] Error in getCurrentSeasonData:`, error)
+  } catch (error: unknown) {
+    const apiError = error as ApiError
+    console.error(`[F1-SYNC] Error in getCurrentSeasonData:`, apiError)
     console.error(`[F1-SYNC] Error details:`, {
-      message: error.message,
-      code: error.code,
-      name: error.name,
-      stack: error.stack
+      message: apiError.message,
+      code: apiError.code,
+      name: apiError.name,
+      stack: apiError.stack
     })
     
     // Return empty data structure on error

@@ -4,6 +4,19 @@
  * Utility functions for logging in a format that's easier to read in Vercel logs
  */
 
+// Define a type for errors with extended properties
+interface ExtendedError extends Error {
+  code?: string;
+  cause?: unknown;
+  response?: {
+    status?: number;
+    headers?: Record<string, string>;
+    data?: unknown;
+  };
+  request?: unknown;
+  stack?: string;
+}
+
 /**
  * Log a message with the F1-SYNC prefix and proper formatting for Vercel logs
  */
@@ -26,14 +39,14 @@ export function syncLog(message: string, level: 'info' | 'warn' | 'error' = 'inf
 /**
  * Log an error with all details in a structured way
  */
-export function syncErrorLog(message: string, error: any) {
+export function syncErrorLog(message: string, error: ExtendedError) {
   const timestamp = new Date().toISOString()
   const prefix = `[F1-SYNC][${timestamp}][ERROR]`
   
   console.error(`${prefix} ${message}`)
   
   // Log basic error info
-  console.error(`${prefix} Details: ${error.message || error}`)
+  console.error(`${prefix} Details: ${error.message || String(error)}`)
   
   // Log error code if available
   if (error.code) {
@@ -51,7 +64,7 @@ export function syncErrorLog(message: string, error: any) {
     if (error.response.data) {
       try {
         console.error(`${prefix} Response Data: ${JSON.stringify(error.response.data)}`)
-      } catch (e) {
+      } catch {
         console.error(`${prefix} Response Data: [Unable to stringify]`)
       }
     }
@@ -87,7 +100,7 @@ export function createLogger(tag: string) {
   return {
     log: (message: string) => syncLog(`[${tag}] ${message}`),
     warn: (message: string) => syncLog(`[${tag}] ${message}`, 'warn'),
-    error: (message: string, error?: any) => {
+    error: (message: string, error?: ExtendedError) => {
       if (error) {
         syncErrorLog(`[${tag}] ${message}`, error)
       } else {

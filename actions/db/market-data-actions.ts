@@ -26,6 +26,19 @@ import {
 } from "@/lib/services/scraping-service"
 import { DataExtractionError, FantasyDataError } from "@/lib/services/custom-errors"
 
+// Define a type for errors with response details
+interface ApiError extends Error {
+  code?: string;
+  response?: {
+    status?: number;
+    headers?: Record<string, string>;
+    data?: unknown;
+  };
+  request?: unknown;
+  stack?: string;
+  status?: number;
+}
+
 export async function getMarketDriversAction(): Promise<ActionState<SelectMarketDriver[]>> {
   try {
     const drivers = await getMarketDrivers()
@@ -85,7 +98,7 @@ async function withRetry<T>(
     initialDelay: 1000,
     maxDelay: 10000,
     factor: 2,
-    retryOnError: (err: any) => true
+    retryOnError: (err: ApiError) => true
   }
 ): Promise<T> {
   let { maxRetries, initialDelay, factor, maxDelay, retryOnError } = options
@@ -94,12 +107,12 @@ async function withRetry<T>(
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     try {
       return await fn()
-    } catch (err: any) {
-      if (attempt > maxRetries || !retryOnError(err)) {
+    } catch (err) {
+      if (attempt > maxRetries || !retryOnError(err as ApiError)) {
         throw err
       }
       
-      console.log(`[F1-SYNC] Retry attempt ${attempt}/${maxRetries} after error: ${err.message || err}`)
+      console.log(`[F1-SYNC] Retry attempt ${attempt}/${maxRetries} after error: ${(err as Error).message || String(err)}`)
       
       // Wait before next retry with exponential backoff
       await new Promise(resolve => setTimeout(resolve, delay))
@@ -128,13 +141,13 @@ async function startBackgroundSync() {
         initialDelay: 2000,
         maxDelay: 15000,
         factor: 2,
-        retryOnError: (err) => {
+        retryOnError: (err: ApiError) => {
           // Only retry on network errors or server errors
           const isNetworkError = err.code === 'ECONNRESET' || 
                                  err.code === 'ETIMEDOUT' || 
                                  err.message?.includes('network') ||
                                  err.message?.includes('connection');
-          const isServerError = err.status >= 500;
+          const isServerError = err.status !== undefined && err.status >= 500;
           console.log(`[F1-SYNC] Error type: network=${isNetworkError}, server=${isServerError}, code=${err.code}`);
           return isNetworkError || isServerError;
         }
@@ -236,13 +249,14 @@ async function startBackgroundSync() {
       });
       console.log(`[F1-SYNC] Driver extraction completed in ${Date.now() - extractStartTime}ms`)
       console.log(`[F1-SYNC] Extracted ${fantasyDrivers.length} drivers from F1 Fantasy`)
-    } catch (error: any) {
-      console.error("[F1-SYNC] Error getting F1 Fantasy driver data:", error)
+    } catch (error: unknown) {
+      const apiError = error as ApiError;
+      console.error("[F1-SYNC] Error getting F1 Fantasy driver data:", apiError)
       console.error("[F1-SYNC] Error details:", {
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-        name: error.name
+        message: apiError.message,
+        code: apiError.code,
+        stack: apiError.stack,
+        name: apiError.name
       })
       
       // Log error but continue
@@ -282,14 +296,15 @@ async function startBackgroundSync() {
       });
       console.log(`[F1-SYNC] Constructor extraction completed in ${Date.now() - extractStartTime}ms`)
       console.log(`[F1-SYNC] Extracted ${fantasyConstructors.length} constructors from F1 Fantasy`)
-    } catch (error: any) {
-      console.error("[F1-SYNC] Error getting F1 Fantasy constructor data:", error)
+    } catch (error: unknown) {
+      const apiError = error as ApiError;
+      console.error("[F1-SYNC] Error getting F1 Fantasy constructor data:", apiError)
       console.error("[F1-SYNC] Error details:", {
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-        name: error.name
-      })
+        message: apiError.message,
+        code: apiError.code,
+        stack: apiError.stack,
+        name: apiError.name
+      });
       
       // Log error but continue with just driver data
       console.log("[F1-SYNC] Continuing with driver data only due to constructor data error")
