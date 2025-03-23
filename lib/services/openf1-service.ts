@@ -66,134 +66,290 @@ export interface Position {
  * Fetches all meetings (race weekends) for a given year
  */
 export async function getMeetings(year: number): Promise<Meeting[]> {
-  const response = await fetch(`${BASE_URL}/meetings?year=${year}`)
+  const url = `${BASE_URL}/meetings?year=${year}`
+  console.log(`[F1-SYNC] Fetching meetings from: ${url}`)
+  const startTime = Date.now()
   
-  if (!response.ok) {
-    throw new Error(`Failed to fetch meetings: ${response.statusText}`)
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'F1-Fantasy-AI/1.0' },
+      next: { revalidate: 3600 } // Cache for 1 hour
+    })
+    
+    console.log(`[F1-SYNC] Meetings fetch response status: ${response.status} (${Date.now() - startTime}ms)`)
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch meetings: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    console.log(`[F1-SYNC] Successfully parsed meetings JSON, count: ${data.length}`)
+    return data
+  } catch (error: any) {
+    console.error(`[F1-SYNC] Error fetching meetings for year ${year}:`, error)
+    console.error(`[F1-SYNC] Error details:`, {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      stack: error.stack
+    })
+    throw error
   }
-  
-  return response.json()
 }
 
 /**
  * Fetches all sessions for a specific meeting
  */
 export async function getSessions(meetingKey: number): Promise<Session[]> {
-  const response = await fetch(`${BASE_URL}/sessions?meeting_key=${meetingKey}`)
+  const url = `${BASE_URL}/sessions?meeting_key=${meetingKey}`
+  console.log(`[F1-SYNC] Fetching sessions from: ${url}`)
+  const startTime = Date.now()
   
-  if (!response.ok) {
-    throw new Error(`Failed to fetch sessions: ${response.statusText}`)
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'F1-Fantasy-AI/1.0' },
+      next: { revalidate: 3600 } // Cache for 1 hour
+    })
+    
+    console.log(`[F1-SYNC] Sessions fetch response status: ${response.status} (${Date.now() - startTime}ms)`)
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch sessions: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    console.log(`[F1-SYNC] Successfully parsed sessions JSON, count: ${data.length}`)
+    return data
+  } catch (error: any) {
+    console.error(`[F1-SYNC] Error fetching sessions for meeting ${meetingKey}:`, error)
+    console.error(`[F1-SYNC] Error details:`, {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      stack: error.stack
+    })
+    throw error
   }
-  
-  return response.json()
 }
 
 /**
  * Fetches all drivers for a specific session
  */
 export async function getDrivers(sessionKey: number): Promise<Driver[]> {
-  const response = await fetch(`${BASE_URL}/drivers?session_key=${sessionKey}`)
+  const url = `${BASE_URL}/drivers?session_key=${sessionKey}`
+  console.log(`[F1-SYNC] Fetching drivers from: ${url}`)
+  const startTime = Date.now()
   
-  if (!response.ok) {
-    throw new Error(`Failed to fetch drivers: ${response.statusText}`)
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'F1-Fantasy-AI/1.0' },
+      next: { revalidate: 3600 } // Cache for 1 hour
+    })
+    
+    console.log(`[F1-SYNC] Drivers fetch response status: ${response.status} (${Date.now() - startTime}ms)`)
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch drivers: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    console.log(`[F1-SYNC] Successfully parsed drivers JSON, count: ${data.length}`)
+    return data
+  } catch (error: any) {
+    console.error(`[F1-SYNC] Error fetching drivers for session ${sessionKey}:`, error)
+    console.error(`[F1-SYNC] Error details:`, {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      stack: error.stack
+    })
+    throw error
   }
-  
-  return response.json()
 }
 
 /**
  * Fetches the latest race result positions for all drivers in a session
  */
 export async function getRaceResult(sessionKey: number): Promise<Record<number, number>> {
+  console.log(`[F1-SYNC] Fetching race results for session ${sessionKey}`)
   const positions: Record<number, Position[]> = {}
   
-  // Get positions for each driver in the session
-  const drivers = await getDrivers(sessionKey)
-  
-  for (const driver of drivers) {
-    const response = await fetch(`${BASE_URL}/position?session_key=${sessionKey}&driver_number=${driver.driver_number}`)
+  try {
+    // Get positions for each driver in the session
+    const drivers = await getDrivers(sessionKey)
     
-    if (!response.ok) {
-      console.error(`Failed to fetch positions for driver ${driver.driver_number}`)
-      continue
+    for (const driver of drivers) {
+      const url = `${BASE_URL}/position?session_key=${sessionKey}&driver_number=${driver.driver_number}`
+      console.log(`[F1-SYNC] Fetching positions from: ${url}`)
+      const startTime = Date.now()
+      
+      try {
+        const response = await fetch(url, {
+          headers: { 'User-Agent': 'F1-Fantasy-AI/1.0' },
+          next: { revalidate: 3600 } // Cache for 1 hour
+        })
+        
+        console.log(`[F1-SYNC] Position fetch for driver ${driver.driver_number} status: ${response.status} (${Date.now() - startTime}ms)`)
+        
+        if (!response.ok) {
+          console.error(`[F1-SYNC] Failed to fetch positions for driver ${driver.driver_number}: ${response.statusText}`)
+          continue
+        }
+        
+        const driverPositions: Position[] = await response.json()
+        positions[driver.driver_number] = driverPositions
+      } catch (error: any) {
+        console.error(`[F1-SYNC] Error fetching positions for driver ${driver.driver_number}:`, error)
+        console.error(`[F1-SYNC] Error details:`, {
+          message: error.message,
+          code: error.code,
+          name: error.name
+        })
+        // Continue with next driver even if this one fails
+      }
+      
+      // Add a small delay between requests to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
     
-    const driverPositions: Position[] = await response.json()
-    positions[driver.driver_number] = driverPositions
-  }
-  
-  // Get the final position for each driver
-  const results: Record<number, number> = {}
-  
-  for (const [driverNumber, driverPositions] of Object.entries(positions)) {
-    // Sort by date in descending order to get the most recent position
-    const sortedPositions = [...driverPositions].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    )
+    // Get the final position for each driver
+    const results: Record<number, number> = {}
     
-    if (sortedPositions.length > 0) {
-      results[parseInt(driverNumber)] = sortedPositions[0].position
+    for (const [driverNumber, driverPositions] of Object.entries(positions)) {
+      // Sort by date in descending order to get the most recent position
+      const sortedPositions = [...driverPositions].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )
+      
+      if (sortedPositions.length > 0) {
+        results[parseInt(driverNumber)] = sortedPositions[0].position
+      }
     }
+    
+    console.log(`[F1-SYNC] Successfully processed race results for ${Object.keys(results).length} drivers`)
+    return results
+  } catch (error: any) {
+    console.error(`[F1-SYNC] Error processing race results:`, error)
+    console.error(`[F1-SYNC] Error details:`, {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      stack: error.stack
+    })
+    return {}
   }
-  
-  return results
 }
 
 /**
  * Fetches the current season data including meetings, sessions, and most recent race
  */
 export async function getCurrentSeasonData() {
-  // Explicitly use 2025 season data
-  const currentYear = 2025
-  const meetings = await getMeetings(currentYear)
+  console.log(`[F1-SYNC] Starting to fetch current season data`)
+  const startTime = Date.now()
   
-  // Sort meetings by date
-  const sortedMeetings = [...meetings].sort(
-    (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
-  )
-  
-  // Find the most recent meeting
-  const now = new Date()
-  const pastMeetings = sortedMeetings.filter(meeting => new Date(meeting.date_start) < now)
-  const mostRecentMeeting = pastMeetings.length ? pastMeetings[pastMeetings.length - 1] : sortedMeetings[0]
-  
-  // Get sessions for the most recent meeting
-  let sessions: Session[] = []
-  let drivers: Driver[] = []
-  let results: Record<number, number> = {}
-  
-  if (mostRecentMeeting) {
-    try {
-      // Get sessions for the most recent meeting
-      sessions = await getSessions(mostRecentMeeting.meeting_key)
+  try {
+    // Explicitly use 2025 season data
+    const currentYear = 2025
+    console.log(`[F1-SYNC] Fetching data for ${currentYear} season`)
+    
+    // Use longer timeout for potentially slow requests
+    const fetchWithTimeout = async (url: string, options = {}) => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
       
-      // Find the race session
-      const raceSession = sessions.find(session => 
-        session.session_type === "Race" && session.session_name === "Race"
-      )
-      
-      if (raceSession) {
-        // Get drivers and results for the race
-        drivers = await getDrivers(raceSession.session_key)
-        results = await getRaceResult(raceSession.session_key)
-      } else if (sessions.length) {
-        // If no race session found, try to get drivers from any session
-        const anySession = sessions[0]
-        drivers = await getDrivers(anySession.session_key)
+      try {
+        const response = await fetch(url, { 
+          ...options,
+          signal: controller.signal,
+          headers: { 
+            'User-Agent': 'F1-Fantasy-AI/1.0',
+            ...(options as any).headers
+          }
+        })
+        return response
+      } finally {
+        clearTimeout(timeoutId)
       }
-    } catch (error) {
-      console.error("Error fetching OpenF1 data:", error)
-      // Continue with empty data
     }
-  }
-  
-  return {
-    currentYear,
-    meetings: sortedMeetings,
-    mostRecentMeeting,
-    sessions,
-    drivers,
-    results
+    
+    const meetings = await getMeetings(currentYear)
+    
+    // Sort meetings by date
+    const sortedMeetings = [...meetings].sort(
+      (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime()
+    )
+    
+    // Find the most recent meeting
+    const now = new Date()
+    const pastMeetings = sortedMeetings.filter(meeting => new Date(meeting.date_start) < now)
+    const mostRecentMeeting = pastMeetings.length ? pastMeetings[pastMeetings.length - 1] : sortedMeetings[0]
+    
+    // Get sessions for the most recent meeting
+    let sessions: Session[] = []
+    let drivers: Driver[] = []
+    let results: Record<number, number> = {}
+    
+    if (mostRecentMeeting) {
+      try {
+        console.log(`[F1-SYNC] Using meeting: ${mostRecentMeeting.meeting_name}`)
+        // Get sessions for the most recent meeting
+        sessions = await getSessions(mostRecentMeeting.meeting_key)
+        
+        // Find the race session
+        const raceSession = sessions.find(session => 
+          session.session_type === "Race" && session.session_name === "Race"
+        )
+        
+        if (raceSession) {
+          console.log(`[F1-SYNC] Found race session: ${raceSession.session_name}`)
+          // Get drivers and results for the race
+          drivers = await getDrivers(raceSession.session_key)
+          results = await getRaceResult(raceSession.session_key)
+        } else if (sessions.length) {
+          console.log(`[F1-SYNC] No race session found, using first available session: ${sessions[0].session_name}`)
+          // If no race session found, try to get drivers from any session
+          const anySession = sessions[0]
+          drivers = await getDrivers(anySession.session_key)
+        }
+      } catch (error: any) {
+        console.error(`[F1-SYNC] Error fetching session details:`, error)
+        console.error(`[F1-SYNC] Error details:`, {
+          message: error.message,
+          code: error.code,
+          name: error.name,
+          stack: error.stack
+        })
+        // Continue with empty data
+      }
+    }
+    
+    console.log(`[F1-SYNC] Completed current season data fetch in ${Date.now() - startTime}ms`)
+    return {
+      currentYear,
+      meetings: sortedMeetings,
+      mostRecentMeeting,
+      sessions,
+      drivers,
+      results
+    }
+  } catch (error: any) {
+    console.error(`[F1-SYNC] Error in getCurrentSeasonData:`, error)
+    console.error(`[F1-SYNC] Error details:`, {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      stack: error.stack
+    })
+    
+    // Return empty data structure on error
+    return {
+      currentYear: 2025,
+      meetings: [],
+      mostRecentMeeting: null,
+      sessions: [],
+      drivers: [],
+      results: {}
+    }
   }
 }
 

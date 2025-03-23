@@ -77,6 +77,41 @@ export async function syncF1DataAction(): Promise<ActionState<{
   }
 }
 
+// Utility function for exponential backoff retry
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options = { 
+    maxRetries: 3, 
+    initialDelay: 1000,
+    maxDelay: 10000,
+    factor: 2,
+    retryOnError: (err: any) => true
+  }
+): Promise<T> {
+  let { maxRetries, initialDelay, factor, maxDelay, retryOnError } = options
+  let delay = initialDelay
+  
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    try {
+      return await fn()
+    } catch (err: any) {
+      if (attempt > maxRetries || !retryOnError(err)) {
+        throw err
+      }
+      
+      console.log(`[F1-SYNC] Retry attempt ${attempt}/${maxRetries} after error: ${err.message || err}`)
+      
+      // Wait before next retry with exponential backoff
+      await new Promise(resolve => setTimeout(resolve, delay))
+      
+      // Increase delay for next attempt, but cap at maxDelay
+      delay = Math.min(delay * factor, maxDelay)
+    }
+  }
+  
+  throw new Error("Should not reach here")
+}
+
 // This function runs the actual sync process in the background
 async function startBackgroundSync() {
   try {
@@ -86,12 +121,28 @@ async function startBackgroundSync() {
     let f1TeamNameMap = new Map<string, string>() // Maps normalized team names to original casing
     
     try {
-      console.log("Fetching F1 API data for 2025 season...")
-      const currentData = await getCurrentSeasonData()
+      console.log("[F1-SYNC] Fetching F1 API data for 2025 season...")
+      // Use retry for the API call that's failing in production
+      const currentData = await withRetry(() => getCurrentSeasonData(), {
+        maxRetries: 5,
+        initialDelay: 2000,
+        maxDelay: 15000,
+        factor: 2,
+        retryOnError: (err) => {
+          // Only retry on network errors or server errors
+          const isNetworkError = err.code === 'ECONNRESET' || 
+                                 err.code === 'ETIMEDOUT' || 
+                                 err.message?.includes('network') ||
+                                 err.message?.includes('connection');
+          const isServerError = err.status >= 500;
+          console.log(`[F1-SYNC] Error type: network=${isNetworkError}, server=${isServerError}, code=${err.code}`);
+          return isNetworkError || isServerError;
+        }
+      });
       f1Drivers = currentData.drivers || []
       
       if (f1Drivers.length > 0) {
-        console.log(`Found ${f1Drivers.length} drivers in OpenF1 API`)
+        console.log(`[F1-SYNC] Found ${f1Drivers.length} drivers in OpenF1 API`)
         
         // Create normalized name maps for easier matching
         f1Drivers.forEach(driver => {
@@ -120,42 +171,128 @@ async function startBackgroundSync() {
           }
         })
       } else {
-        console.warn("No drivers found in the OpenF1 API")
+        console.warn("[F1-SYNC] No drivers found in the OpenF1 API")
       }
-    } catch (error) {
-      console.error("Error fetching OpenF1 data:", error)
+    } catch (error: any) {
+      console.error("[F1-SYNC] Error fetching OpenF1 data:", error)
+      console.error("[F1-SYNC] Error details:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      })
+      
+      if (error.response) {
+        console.error("[F1-SYNC] Response error data:", {
+          status: error.response.status,
+          headers: error.response.headers,
+          data: error.response.data
+        })
+      } else if (error.request) {
+        console.error("[F1-SYNC] Request error:", {
+          method: error.request.method,
+          path: error.request.path,
+          host: error.request.host,
+          protocol: error.request.protocol
+        })
+      }
+      
       // We'll continue even without OpenF1 data
+      console.log("[F1-SYNC] Continuing without OpenF1 data due to API error")
     }
     
     // STEP 2: Scrape F1 Fantasy data for points and prices
-    console.log("Scraping F1 Fantasy data for points and prices...")
+    console.log("[F1-SYNC] Scraping F1 Fantasy data for points and prices...")
     
     // Get driver data
     let fantasyDrivers: DriverFantasyData[] = []
     try {
-      const driverContent = await scrapeDriverFantasyData()
-      console.log("Successfully scraped driver fantasy data")
-      fantasyDrivers = await extractDriverData(driverContent)
-      console.log(`Extracted ${fantasyDrivers.length} drivers from F1 Fantasy`)
-    } catch (error) {
-      console.error("Error getting F1 Fantasy driver data:", error)
+      console.log("[F1-SYNC] Starting driver fantasy data scraping...")
+      const startTime = Date.now()
+      const driverContent = await withRetry(() => scrapeDriverFantasyData(), {
+        maxRetries: 3,
+        initialDelay: 2000,
+        maxDelay: 10000,
+        factor: 2,
+        retryOnError: (err) => {
+          // Retry on any error with the scraper
+          console.log(`[F1-SYNC] Driver scraper error: ${err.message || err}`);
+          return true;
+        }
+      });
+      console.log(`[F1-SYNC] Driver scraping completed in ${Date.now() - startTime}ms`)
+      console.log(`[F1-SYNC] Driver content length: ${driverContent.length}`)
+      
+      console.log("[F1-SYNC] Extracting driver data with AI...")
+      const extractStartTime = Date.now()
+      fantasyDrivers = await withRetry(() => extractDriverData(driverContent), {
+        maxRetries: 2,
+        initialDelay: 1000,
+        maxDelay: 5000,
+        factor: 1.5,
+        retryOnError: (err) => {
+          // Only retry data extraction on specific errors
+          return !(err instanceof DataExtractionError);
+        }
+      });
+      console.log(`[F1-SYNC] Driver extraction completed in ${Date.now() - extractStartTime}ms`)
+      console.log(`[F1-SYNC] Extracted ${fantasyDrivers.length} drivers from F1 Fantasy`)
+    } catch (error: any) {
+      console.error("[F1-SYNC] Error getting F1 Fantasy driver data:", error)
+      console.error("[F1-SYNC] Error details:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        name: error.name
+      })
       
       // Log error but continue
-      console.warn("Continuing with OpenF1 data only due to fantasy driver data error")
+      console.warn("[F1-SYNC] Continuing with OpenF1 data only due to fantasy driver data error")
     }
     
     // Get constructor data
     let fantasyConstructors: ConstructorFantasyData[] = []
     try {
-      const constructorContent = await scrapeConstructorFantasyData()
-      console.log("Successfully scraped constructor fantasy data")
-      fantasyConstructors = await extractConstructorData(constructorContent)
-      console.log(`Extracted ${fantasyConstructors.length} constructors from F1 Fantasy`)
-    } catch (error) {
-      console.error("Error getting F1 Fantasy constructor data:", error)
+      console.log("[F1-SYNC] Starting constructor fantasy data scraping...")
+      const startTime = Date.now()
+      const constructorContent = await withRetry(() => scrapeConstructorFantasyData(), {
+        maxRetries: 3,
+        initialDelay: 2000,
+        maxDelay: 10000,
+        factor: 2,
+        retryOnError: (err) => {
+          // Retry on any error with the scraper
+          console.log(`[F1-SYNC] Constructor scraper error: ${err.message || err}`);
+          return true;
+        }
+      });
+      console.log(`[F1-SYNC] Constructor scraping completed in ${Date.now() - startTime}ms`)
+      console.log(`[F1-SYNC] Constructor content length: ${constructorContent.length}`)
+      
+      console.log("[F1-SYNC] Extracting constructor data with AI...")
+      const extractStartTime = Date.now()
+      fantasyConstructors = await withRetry(() => extractConstructorData(constructorContent), {
+        maxRetries: 2,
+        initialDelay: 1000,
+        maxDelay: 5000,
+        factor: 1.5,
+        retryOnError: (err) => {
+          // Only retry data extraction on specific errors
+          return !(err instanceof DataExtractionError);
+        }
+      });
+      console.log(`[F1-SYNC] Constructor extraction completed in ${Date.now() - extractStartTime}ms`)
+      console.log(`[F1-SYNC] Extracted ${fantasyConstructors.length} constructors from F1 Fantasy`)
+    } catch (error: any) {
+      console.error("[F1-SYNC] Error getting F1 Fantasy constructor data:", error)
+      console.error("[F1-SYNC] Error details:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        name: error.name
+      })
       
       // Log error but continue with just driver data
-      console.log("Continuing with driver data only due to constructor data error")
+      console.log("[F1-SYNC] Continuing with driver data only due to constructor data error")
       fantasyConstructors = [] // Ensure empty array for safety
     }
     
@@ -203,7 +340,7 @@ async function startBackgroundSync() {
       processedDriverNumbers.add(driverNumber)
     }
     
-    console.log(`Prepared ${openF1DriversMap.size} OpenF1 driver base records`)
+    console.log(`Prepared ${processedDriverNumbers.size} OpenF1 driver base records (${openF1DriversMap.size} map entries)`)
     
     // Reset for merging process
     processedDriverNumbers.clear()
@@ -244,73 +381,85 @@ async function startBackgroundSync() {
         console.log(`Using OpenF1 driver with default values: ${driver.name} (#${driver.driverNumber}), Price: $${driver.price}M, Points: ${driver.points}`)
       }
     } else {
-      // Process fantasy drivers and merge with OpenF1 data
+      // If we have fantasy drivers, merge them with OpenF1 data
+      console.log("Merging OpenF1 and fantasy driver data...")
+      
+      // Track unique drivers by driver number to avoid duplicates
+      const uniqueDrivers = new Map<number, InsertMarketDriver>()
+      
+      // First map all OpenF1 drivers by driver number (each driver only once)
+      for (const [_, driver] of openF1DriversMap.entries()) {
+        if (!uniqueDrivers.has(driver.driverNumber)) {
+          uniqueDrivers.set(driver.driverNumber, driver)
+        }
+      }
+      
+      console.log(`Found ${uniqueDrivers.size} unique drivers from OpenF1 data`)
+      
+      // Now try to match fantasy drivers to OpenF1 drivers and merge the data
       for (const fantasyDriver of fantasyDrivers) {
-        // Normalize fantasy driver name for comparison
-        const fantasyNameNormalized = fantasyDriver.name.toLowerCase().trim()
+        // Try to find a matching OpenF1 driver by name similarity
+        let bestMatch: InsertMarketDriver | null = null
         
-        // Try to find a matching OpenF1 driver
-        let openF1Driver: InsertMarketDriver | undefined
+        // Normalize the fantasy driver name for comparison
+        const fantasyName = fantasyDriver.name.toLowerCase().replace(/\s+/g, '')
         
-        // Check if we have a direct match
-        if (openF1DriversMap.has(fantasyNameNormalized)) {
-          openF1Driver = openF1DriversMap.get(fantasyNameNormalized)
-        } else {
-          // Try partial matching
-          for (const [key, driver] of openF1DriversMap.entries()) {
-            if (
-              fantasyNameNormalized.includes(key) || 
-              key.includes(fantasyNameNormalized)
-            ) {
-              openF1Driver = driver
-              break
-            }
+        for (const [driverNumber, openF1Driver] of uniqueDrivers.entries()) {
+          const openF1Name = openF1Driver.name.toLowerCase().replace(/\s+/g, '')
+          
+          // Check for name matches
+          if (openF1Name.includes(fantasyName) || 
+              fantasyName.includes(openF1Name) ||
+              // Also try by last name
+              fantasyName.includes(openF1Driver.name.split(' ').pop()?.toLowerCase() || '')) {
+            bestMatch = openF1Driver
+            break
           }
         }
         
-        // Create the merged driver record
-        let mergedDriver: InsertMarketDriver
-        
-        if (openF1Driver) {
-          // Use OpenF1 data for metadata and fantasy data for points/prices
-          mergedDriver = {
-            ...openF1Driver,
+        if (bestMatch) {
+          // Update the driver with fantasy data
+          uniqueDrivers.set(bestMatch.driverNumber, {
+            ...bestMatch,
             price: fantasyDriver.price,
             points: fantasyDriver.points
-          }
+          })
           
-          // Skip if we already processed this driver number
-          if (processedDriverNumbers.has(mergedDriver.driverNumber)) {
-            console.log(`Skipping duplicate driver ${mergedDriver.name} (#${mergedDriver.driverNumber})`)
-            continue
-          }
-          
-          processedDriverNumbers.add(mergedDriver.driverNumber)
+          console.log(`Merged driver ${bestMatch.name} (#${bestMatch.driverNumber}) with fantasy data: $${fantasyDriver.price}M, ${fantasyDriver.points} points`)
         } else {
-          // If no OpenF1 match, use fantasy data for everything
-          mergedDriver = {
-            driverNumber: 0, // No driver number available
+          // Fantasy driver with no OpenF1 match, create new entry
+          // Generate a unique driver number for fantasy-only drivers
+          const fantasyDriverNumber = -(uniqueDrivers.size + 1) // Use negative numbers to avoid conflicts
+          
+          uniqueDrivers.set(fantasyDriverNumber, {
+            driverNumber: fantasyDriverNumber,
             name: fantasyDriver.name,
             team: fantasyDriver.team,
             teamColor: "#FFFFFF", // Default color
-            imageUrl: "", // No image available
-            countryCode: "", // No country code available
+            imageUrl: "", // No image
+            countryCode: "", // No country code
             price: fantasyDriver.price,
             points: fantasyDriver.points
-          }
+          })
+          
+          console.log(`Added fantasy-only driver ${fantasyDriver.name} with generated number #${fantasyDriverNumber}`)
         }
-        
-        mergedDrivers.push(mergedDriver)
-        console.log(`Merged driver: ${mergedDriver.name} (#${mergedDriver.driverNumber}), Price: $${mergedDriver.price}M, Points: ${mergedDriver.points}`)
+      }
+      
+      // Convert the map to an array for the final result
+      for (const driver of uniqueDrivers.values()) {
+        mergedDrivers.push(driver)
       }
     }
     
-    console.log(`Total drivers prepared: ${mergedDrivers.length}`)
+    console.log(`Prepared ${mergedDrivers.length} merged driver records`)
     
     // STEP 4: Prepare the constructor data
     console.log("Preparing merged constructor data...")
     const mergedConstructors: InsertMarketConstructor[] = []
-    const processedTeams = new Set<string>() // To prevent duplicates
+    
+    // Track unique constructors by name to avoid duplicates
+    const uniqueConstructors = new Map<string, InsertMarketConstructor>()
     
     // First, build a map of team names to colors from OpenF1 data
     const teamColorMap = new Map<string, string>()
@@ -343,13 +492,13 @@ async function startBackgroundSync() {
     
     console.log(`Built team color map with ${teamColorMap.size} entries`)
     
-    // Now process fantasy constructors
+    // Process fantasy constructors and ensure we only add each one once
     for (const fantasyConstructor of fantasyConstructors) {
       // Normalize the constructor name
       const normalizedName = fantasyConstructor.name.toLowerCase().trim()
       
       // Skip if we already processed this team
-      if (processedTeams.has(normalizedName)) {
+      if (uniqueConstructors.has(normalizedName)) {
         console.log(`Skipping duplicate constructor: ${fantasyConstructor.name}`)
         continue
       }
@@ -384,11 +533,17 @@ async function startBackgroundSync() {
         points: fantasyConstructor.points
       }
       
-      // Add to our merged list and mark as processed
-      processedTeams.add(normalizedName)
-      mergedConstructors.push(marketConstructor)
-      console.log(`Merged constructor: ${teamInfo}, Price: $${marketConstructor.price}M, Points: ${marketConstructor.points}`)
+      // Add to our unique constructors map
+      uniqueConstructors.set(normalizedName, marketConstructor)
+      console.log(`Added constructor: ${teamInfo}, Price: $${marketConstructor.price}M, Points: ${marketConstructor.points}`)
     }
+    
+    // Convert the map to an array for the final result
+    for (const constructor of uniqueConstructors.values()) {
+      mergedConstructors.push(constructor)
+    }
+    
+    console.log(`Prepared ${mergedConstructors.length} merged constructor records`)
     
     // STEP 5: Update database with the merged data (replace all existing records)
     console.log(`Updating database with ${mergedDrivers.length} drivers and ${mergedConstructors.length} constructors...`)
@@ -397,12 +552,35 @@ async function startBackgroundSync() {
       await updateMarketData(mergedDrivers, mergedConstructors)
       console.log("Database update successful")
       
-      // Remove revalidatePath calls from here - they're causing the error
-      // They'll be handled by the client refreshing after polling completes
+      // Server components using the data will revalidate on next request
+      return {
+        isSuccess: true,
+        message: "Market data updated successfully",
+        data: {
+          driversUpdated: mergedDrivers.length,
+          constructorsUpdated: mergedConstructors.length
+        }
+      }
     } catch (error) {
       console.error("Error updating database:", error)
+      return {
+        isSuccess: false,
+        message: "Failed to update market data",
+        data: {
+          driversUpdated: 0,
+          constructorsUpdated: 0
+        }
+      }
     }
   } catch (error) {
     console.error("Error in background sync process:", error)
+    return {
+      isSuccess: false,
+      message: "Error in background sync process",
+      data: {
+        driversUpdated: 0,
+        constructorsUpdated: 0
+      }
+    }
   }
-} 
+}

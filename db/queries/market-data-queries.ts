@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/db/db";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { 
   InsertMarketDriver, 
   InsertMarketConstructor, 
@@ -16,8 +16,19 @@ export const getMarketDrivers = async () => {
     return await db.query.marketDrivers.findMany({
       orderBy: (marketDrivers, { desc }) => [desc(marketDrivers.points)]
     });
-  } catch (error) {
-    console.error("Error getting market drivers:", error);
+  } catch (error: any) {
+    console.error("[F1-SYNC] Error getting market drivers:", error);
+    // Log detailed error info
+    if (error.response) {
+      console.error("[F1-SYNC] Response error data:", {
+        status: error.response.status,
+        headers: error.response.headers,
+        data: error.response.data
+      });
+    } else if (error.request) {
+      console.error("[F1-SYNC] Request error:", error.request);
+    }
+    console.error("[F1-SYNC] Error stack:", error.stack);
     throw new Error("Failed to get market drivers");
   }
 }
@@ -74,8 +85,19 @@ export const getMarketConstructors = async () => {
     return await db.query.marketConstructors.findMany({
       orderBy: (marketConstructors, { desc }) => [desc(marketConstructors.points)]
     });
-  } catch (error) {
-    console.error("Error getting market constructors:", error);
+  } catch (error: any) {
+    console.error("[F1-SYNC] Error getting market constructors:", error);
+    // Log detailed error info
+    if (error.response) {
+      console.error("[F1-SYNC] Response error data:", {
+        status: error.response.status,
+        headers: error.response.headers,
+        data: error.response.data
+      });
+    } else if (error.request) {
+      console.error("[F1-SYNC] Request error:", error.request);
+    }
+    console.error("[F1-SYNC] Error stack:", error.stack);
     throw new Error("Failed to get market constructors");
   }
 }
