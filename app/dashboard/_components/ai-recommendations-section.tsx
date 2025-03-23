@@ -44,6 +44,31 @@ export default function AIRecommendationsSection({
   const [recommendation, setRecommendation] = useState<RecommendationData | null>(null)
   const [showRecommendationDialog, setShowRecommendationDialog] = useState(false)
   const [activeTab, setActiveTab] = useState("current")
+  const [rateLimitInfo, setRateLimitInfo] = useState<{
+    canMakeRequest: boolean;
+    resetTime: Date | null;
+    requestsRemaining: number;
+  } | null>(null)
+  
+  // Check rate limit on component mount
+  useEffect(() => {
+    const checkRateLimit = async () => {
+      if (!userId) return
+      
+      try {
+        const { checkRecommendationRateLimitAction } = await import('@/actions/db/profiles-actions')
+        const result = await checkRecommendationRateLimitAction(userId)
+        
+        if (result.isSuccess && result.data) {
+          setRateLimitInfo(result.data)
+        }
+      } catch (error) {
+        console.error("Error checking rate limit:", error)
+      }
+    }
+    
+    checkRateLimit()
+  }, [userId])
   
   // Setup polling for recommendation status
   useEffect(() => {
@@ -113,6 +138,13 @@ export default function AIRecommendationsSection({
           // Start polling for results
           toast.info("Generating recommendations, this may take a moment...")
           setIsPolling(true)
+          
+          // Update rate limit info after successful request
+          const { checkRecommendationRateLimitAction } = await import('@/actions/db/profiles-actions')
+          const rateLimitResult = await checkRecommendationRateLimitAction(userId)
+          if (rateLimitResult.isSuccess && rateLimitResult.data) {
+            setRateLimitInfo(rateLimitResult.data)
+          }
         } else {
           // Immediately get the results if they're ready
           const recommendationResult = await getRecommendationAction(userId)
@@ -121,6 +153,13 @@ export default function AIRecommendationsSection({
             setRecommendation(recommendationResult.data)
             setShowRecommendationDialog(true)
             setIsLoading(false)
+            
+            // Update rate limit info after successful request
+            const { checkRecommendationRateLimitAction } = await import('@/actions/db/profiles-actions')
+            const rateLimitResult = await checkRecommendationRateLimitAction(userId)
+            if (rateLimitResult.isSuccess && rateLimitResult.data) {
+              setRateLimitInfo(rateLimitResult.data)
+            }
           } else {
             // Fall back to polling if something went wrong
             setIsPolling(true)
@@ -134,6 +173,26 @@ export default function AIRecommendationsSection({
       console.error("Error generating recommendations:", error)
       toast.error("An error occurred while generating recommendations")
       setIsLoading(false)
+    }
+  }
+  
+  // Format time until reset
+  const formatTimeUntilReset = () => {
+    if (!rateLimitInfo?.resetTime) return null
+    
+    const now = new Date()
+    const resetTime = new Date(rateLimitInfo.resetTime)
+    const diffMs = resetTime.getTime() - now.getTime()
+    
+    if (diffMs <= 0) return "soon"
+    
+    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+    
+    if (diffHrs > 0) {
+      return `${diffHrs}h ${diffMins}m`
+    } else {
+      return `${diffMins}m`
     }
   }
   
@@ -159,14 +218,32 @@ export default function AIRecommendationsSection({
             <li>Upcoming race conditions</li>
             <li>Recent form and momentum</li>
           </ul>
+          
+          {rateLimitInfo && (
+            <div className="text-xs text-muted-foreground mt-4 flex justify-between items-center">
+              <span>
+                Recommendations remaining: {rateLimitInfo.requestsRemaining}
+              </span>
+              {!rateLimitInfo.canMakeRequest && rateLimitInfo.resetTime && (
+                <span>
+                  Resets in: {formatTimeUntilReset()}
+                </span>
+              )}
+            </div>
+          )}
         </CardContent>
         <CardFooter>
           <Button 
             onClick={getRecommendations} 
-            disabled={isLoading || isPolling}
+            disabled={isLoading || isPolling || (rateLimitInfo?.canMakeRequest === false)}
             className="w-full"
           >
-            {isLoading || isPolling ? "Generating Recommendations..." : "Get AI Recommendations"}
+            {isLoading || isPolling ? 
+              "Generating Recommendations..." : 
+              rateLimitInfo?.canMakeRequest === false ?
+              "Daily Limit Reached" :
+              "Get AI Recommendations"
+            }
           </Button>
         </CardFooter>
       </Card>

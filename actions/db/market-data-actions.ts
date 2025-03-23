@@ -72,6 +72,40 @@ export async function syncF1DataAction(): Promise<ActionState<{
   constructorsUpdated: number 
 }>> {
   try {
+    // Get user ID from auth
+    const { auth } = await import("@clerk/nextjs/server");
+    const { userId } = await auth();
+    
+    if (!userId) {
+      return {
+        isSuccess: false,
+        message: "Unauthorized",
+        data: {
+          driversUpdated: 0,
+          constructorsUpdated: 0
+        }
+      };
+    }
+    
+    // Check rate limit
+    const { checkSyncRateLimitAction, updateSyncUsageAction } = await import('@/actions/db/profiles-actions');
+    const rateLimitResult = await checkSyncRateLimitAction(userId);
+    
+    // If rate limit check failed or user is rate limited
+    if (!rateLimitResult.isSuccess || !rateLimitResult.data?.canMakeRequest) {
+      return {
+        isSuccess: false,
+        message: rateLimitResult.message || "Rate limit exceeded",
+        data: {
+          driversUpdated: 0,
+          constructorsUpdated: 0
+        }
+      };
+    }
+    
+    // Update usage count
+    await updateSyncUsageAction(userId);
+    
     // Start async processing in the background
     // This prevents timeout by immediately returning while processing continues
     startBackgroundSync()

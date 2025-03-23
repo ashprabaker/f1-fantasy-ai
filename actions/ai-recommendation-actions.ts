@@ -43,6 +43,19 @@ export async function generateTeamRecommendationsAction(
   userId: string
 ): Promise<ActionState<{ inProgress: boolean }>> {
   try {
+    // Check rate limit first
+    const { checkRecommendationRateLimitAction, updateRecommendationUsageAction } = await import('@/actions/db/profiles-actions');
+    const rateLimitResult = await checkRecommendationRateLimitAction(userId);
+    
+    // If rate limit check failed or user is rate limited
+    if (!rateLimitResult.isSuccess || !rateLimitResult.data?.canMakeRequest) {
+      return {
+        isSuccess: false,
+        message: rateLimitResult.message || "Rate limit exceeded",
+        data: { inProgress: false }
+      };
+    }
+    
     // Check if we already have a recent recommendation for this user
     const userRecommendation = recommendationStore.get(userId);
     
@@ -71,6 +84,9 @@ export async function generateTeamRecommendationsAction(
       inProgress: true,
       timestamp: Date.now()
     });
+    
+    // Update user's recommendation usage count
+    await updateRecommendationUsageAction(userId);
     
     // Start background process
     generateRecommendationInBackground(teamData, marketDrivers, marketConstructors, userId);

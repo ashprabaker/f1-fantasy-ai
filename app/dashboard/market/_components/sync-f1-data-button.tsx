@@ -6,12 +6,39 @@ import { useState, useEffect } from "react"
 import { syncF1DataAction, getMarketDriversAction } from "@/actions/db/market-data-actions"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
 
 export default function SyncF1DataButton() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncStartedAt, setSyncStartedAt] = useState<Date | null>(null)
   const [initialDriverCount, setInitialDriverCount] = useState<number | null>(null)
+  const [rateLimitInfo, setRateLimitInfo] = useState<{
+    canMakeRequest: boolean;
+    resetTime: Date | null;
+    requestsRemaining: number;
+  } | null>(null)
   const router = useRouter()
+  const { userId } = useAuth()
+  
+  // Check rate limit on component mount
+  useEffect(() => {
+    const checkRateLimit = async () => {
+      if (!userId) return
+      
+      try {
+        const { checkSyncRateLimitAction } = await import('@/actions/db/profiles-actions')
+        const result = await checkSyncRateLimitAction(userId)
+        
+        if (result.isSuccess && result.data) {
+          setRateLimitInfo(result.data)
+        }
+      } catch (error) {
+        console.error("Error checking rate limit:", error)
+      }
+    }
+    
+    checkRateLimit()
+  }, [userId])
   
   // Store initial driver count when starting sync
   useEffect(() => {
@@ -50,6 +77,15 @@ export default function SyncF1DataButton() {
             setInitialDriverCount(null)
             toast.success("F1 data sync completed")
             
+            // Update rate limit info after successful sync
+            if (userId) {
+              const { checkSyncRateLimitAction } = await import('@/actions/db/profiles-actions')
+              const rateLimitResult = await checkSyncRateLimitAction(userId)
+              if (rateLimitResult.isSuccess && rateLimitResult.data) {
+                setRateLimitInfo(rateLimitResult.data)
+              }
+            }
+            
             // Force revalidation by refreshing the router
             router.refresh()
           }
@@ -72,7 +108,27 @@ export default function SyncF1DataButton() {
     
     const interval = setInterval(checkSyncCompletion, checkInterval)
     return () => clearInterval(interval)
-  }, [isSyncing, syncStartedAt, initialDriverCount, router])
+  }, [isSyncing, syncStartedAt, initialDriverCount, router, userId])
+  
+  // Format time until reset
+  const formatTimeUntilReset = () => {
+    if (!rateLimitInfo?.resetTime) return null
+    
+    const now = new Date()
+    const resetTime = new Date(rateLimitInfo.resetTime)
+    const diffMs = resetTime.getTime() - now.getTime()
+    
+    if (diffMs <= 0) return "soon"
+    
+    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+    
+    if (diffHrs > 0) {
+      return `${diffHrs}h ${diffMins}m`
+    } else {
+      return `${diffMins}m`
+    }
+  }
   
   async function handleSync() {
     try {
@@ -90,6 +146,15 @@ export default function SyncF1DataButton() {
         setIsSyncing(false)
         setSyncStartedAt(null)
         setInitialDriverCount(null)
+        
+        // Update rate limit info if the rate limit was the issue
+        if (userId && result.message?.includes("Rate limit")) {
+          const { checkSyncRateLimitAction } = await import('@/actions/db/profiles-actions')
+          const rateLimitResult = await checkSyncRateLimitAction(userId)
+          if (rateLimitResult.isSuccess && rateLimitResult.data) {
+            setRateLimitInfo(rateLimitResult.data)
+          }
+        }
       }
     } catch (error) {
       toast.error("Failed to sync F1 data")
@@ -101,18 +166,39 @@ export default function SyncF1DataButton() {
   }
   
   return (
-    <Button onClick={handleSync} disabled={isSyncing}>
-      {isSyncing ? (
-        <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Syncing in background...
-        </>
-      ) : (
-        <>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Sync F1 Data
-        </>
+    <div className="flex flex-col items-end">
+      <Button 
+        onClick={handleSync} 
+        disabled={isSyncing || (rateLimitInfo?.canMakeRequest === false)}
+      >
+        {isSyncing ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Syncing in background...
+          </>
+        ) : rateLimitInfo?.canMakeRequest === false ? (
+          <>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Daily Limit Reached
+          </>
+        ) : (
+          <>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Sync F1 Data
+          </>
+        )}
+      </Button>
+      
+      {rateLimitInfo && (
+        <div className="text-xs text-muted-foreground mt-1 text-right">
+          <span>
+            Syncs remaining: {rateLimitInfo.requestsRemaining}
+            {!rateLimitInfo.canMakeRequest && rateLimitInfo.resetTime && (
+              <> (Resets in: {formatTimeUntilReset()})</>
+            )}
+          </span>
+        </div>
       )}
-    </Button>
+    </div>
   )
 } 
