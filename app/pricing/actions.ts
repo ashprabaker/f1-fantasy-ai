@@ -16,34 +16,27 @@ export async function fixSubscription(userId: string | null | undefined) {
     
     // If the fix was successful, update the subscriptions table as well
     if (result.isSuccess && result.data) {
-      // Connect to database directly
-      const postgres = (await import("postgres")).default
-      const sql = postgres(process.env.DATABASE_URL!)
+      // Import needed modules
+      const { db } = await import("@/db/db")
+      const { subscriptionsTable } = await import("@/db/schema")
       
-      // Update subscriptions table
-      await sql`
-        INSERT INTO subscriptions (
-          user_id, 
-          active, 
-          stripe_customer_id, 
-          stripe_subscription_id
-        )
-        VALUES (
-          ${userId}, 
-          ${true}, 
-          ${result.data.stripeCustomerId || null}, 
-          ${result.data.stripeSubscriptionId || null}
-        )
-        ON CONFLICT (user_id) 
-        DO UPDATE SET 
-          active = ${true},
-          stripe_customer_id = ${result.data.stripeCustomerId || null},
-          stripe_subscription_id = ${result.data.stripeSubscriptionId || null},
-          updated_at = NOW()
-      `
-      
-      // Close the connection
-      await sql.end()
+      // Update subscriptions table using Drizzle ORM
+      await db.insert(subscriptionsTable)
+        .values({
+          userId: userId,
+          active: true,
+          stripeCustomerId: result.data.stripeCustomerId || undefined,
+          stripeSubscriptionId: result.data.stripeSubscriptionId || undefined
+        })
+        .onConflictDoUpdate({
+          target: subscriptionsTable.userId,
+          set: {
+            active: true,
+            stripeCustomerId: result.data.stripeCustomerId || undefined,
+            stripeSubscriptionId: result.data.stripeSubscriptionId || undefined,
+            updatedAt: new Date()
+          }
+        })
     }
     
     return result

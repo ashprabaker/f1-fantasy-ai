@@ -9,16 +9,16 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    // Connect to database directly
+    // Use direct SQL query to avoid ORM issues
     const sql = postgres(process.env.DATABASE_URL!);
     
     // Check if user has an active subscription
-    const subscriptions = await sql`
-      SELECT * FROM subscriptions WHERE user_id = ${userId}
-    `;
+    const result = await sql`SELECT * FROM subscriptions WHERE user_id = ${userId} LIMIT 1`;
     
-    // Check if the user has an active subscription
-    const isPro = subscriptions.length > 0 && subscriptions[0].active === true;
+    // Check if the user has an active subscription - handle case when active column doesn't exist
+    const isPro = result.length > 0 ? 
+      (result[0].active === undefined ? true : result[0].active === true) : 
+      false;
     
     // For development, always return true
     const forceProInDev = process.env.NODE_ENV === "development";

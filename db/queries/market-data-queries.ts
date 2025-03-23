@@ -13,9 +13,10 @@ import {
 
 export const getMarketDrivers = async () => {
   try {
-    return await db.query.marketDrivers.findMany({
-      orderBy: (marketDrivers, { desc }) => [desc(marketDrivers.points)]
-    });
+    return await db
+      .select()
+      .from(marketDriversTable)
+      .orderBy(desc(marketDriversTable.points));
   } catch (error: any) {
     console.error("[F1-SYNC] Error getting market drivers:", error);
     // Log detailed error info
@@ -35,9 +36,12 @@ export const getMarketDrivers = async () => {
 
 export const getMarketDriver = async (id: string) => {
   try {
-    return await db.query.marketDrivers.findFirst({
-      where: eq(marketDriversTable.id, id)
-    });
+    const results = await db
+      .select()
+      .from(marketDriversTable)
+      .where(eq(marketDriversTable.id, id))
+      .limit(1);
+    return results[0];
   } catch (error) {
     console.error("Error getting market driver:", error);
     throw new Error("Failed to get market driver");
@@ -82,9 +86,10 @@ export const deleteMarketDriver = async (id: string) => {
 
 export const getMarketConstructors = async () => {
   try {
-    return await db.query.marketConstructors.findMany({
-      orderBy: (marketConstructors, { desc }) => [desc(marketConstructors.points)]
-    });
+    return await db
+      .select()
+      .from(marketConstructorsTable)
+      .orderBy(desc(marketConstructorsTable.points));
   } catch (error: any) {
     console.error("[F1-SYNC] Error getting market constructors:", error);
     // Log detailed error info
@@ -104,9 +109,12 @@ export const getMarketConstructors = async () => {
 
 export const getMarketConstructor = async (id: string) => {
   try {
-    return await db.query.marketConstructors.findFirst({
-      where: eq(marketConstructorsTable.id, id)
-    });
+    const results = await db
+      .select()
+      .from(marketConstructorsTable)
+      .where(eq(marketConstructorsTable.id, id))
+      .limit(1);
+    return results[0];
   } catch (error) {
     console.error("Error getting market constructor:", error);
     throw new Error("Failed to get market constructor");

@@ -1,17 +1,9 @@
 import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { pgTable } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import postgres from "postgres";
-import { 
-  profilesTable,
-  teamsTable,
-  driversTable,
-  constructorsTable,
-  racesTable,
-  raceResultsTable,
-  marketDriversTable,
-  marketConstructorsTable
-} from "./schema";
+import * as schema from "./schema";
 
 config({ path: ".env.local" });
 
@@ -19,37 +11,40 @@ config({ path: ".env.local" });
 // import { profilesTable, teamsTable, etc. } from "./schema";
 
 // Define the relations
-const teamRelations = relations(teamsTable, ({ many }) => ({
-  drivers: many(driversTable),
-  constructors: many(constructorsTable)
+const teamRelations = relations(schema.teamsTable, ({ many }) => ({
+  drivers: many(schema.driversTable),
+  constructors: many(schema.constructorsTable)
 }));
 
-const driverRelations = relations(driversTable, ({ one }) => ({
-  team: one(teamsTable, {
-    fields: [driversTable.teamId],
-    references: [teamsTable.id]
+const driverRelations = relations(schema.driversTable, ({ one }) => ({
+  team: one(schema.teamsTable, {
+    fields: [schema.driversTable.teamId],
+    references: [schema.teamsTable.id]
   })
 }));
 
-const constructorRelations = relations(constructorsTable, ({ one }) => ({
-  team: one(teamsTable, {
-    fields: [constructorsTable.teamId],
-    references: [teamsTable.id]
+const constructorRelations = relations(schema.constructorsTable, ({ one }) => ({
+  team: one(schema.teamsTable, {
+    fields: [schema.constructorsTable.teamId],
+    references: [schema.teamsTable.id]
   })
 }));
 
 // We'll add schemas to this object as we create them
-const schema = {
-  profiles: profilesTable,
-  teams: teamsTable,
-  drivers: driversTable,
-  constructors: constructorsTable,
-  races: racesTable,
-  raceResults: raceResultsTable,
-  marketDrivers: marketDriversTable,
-  marketConstructors: marketConstructorsTable
+const schemaObject = {
+  profiles: schema.profilesTable,
+  teams: schema.teamsTable,
+  drivers: schema.driversTable,
+  constructors: schema.constructorsTable,
+  races: schema.racesTable,
+  raceResults: schema.raceResultsTable,
+  marketDrivers: schema.marketDriversTable,
+  marketConstructors: schema.marketConstructorsTable,
+  subscriptions: schema.subscriptionsTable
 };
 
-const client = postgres(process.env.DATABASE_URL!);
+// Create a Postgres client with the connection string
+const queryClient = postgres(process.env.DATABASE_URL!);
 
-export const db = drizzle(client, { schema }); 
+// Create the database with the schema
+export const db = drizzle(queryClient, { schema: schemaObject }); 

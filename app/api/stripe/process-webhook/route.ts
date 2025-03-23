@@ -1,3 +1,5 @@
+"use server"
+
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import postgres from "postgres";
@@ -32,23 +34,20 @@ export async function POST(req: NextRequest) {
           // Connect to database directly
           const sql = postgres(process.env.DATABASE_URL!);
           
-          // Add/update the subscription in both tables
+          // Add/update the subscription without relying on the active column
           await sql`
             INSERT INTO subscriptions (
-              user_id, 
-              active, 
+              user_id,  
               stripe_customer_id, 
               stripe_subscription_id
             )
             VALUES (
               ${userId}, 
-              ${true}, 
               ${customerId}, 
               ${subscriptionId}
             )
             ON CONFLICT (user_id) 
             DO UPDATE SET 
-              active = ${true},
               stripe_customer_id = ${customerId},
               stripe_subscription_id = ${subscriptionId},
               updated_at = NOW()
@@ -68,7 +67,7 @@ export async function POST(req: NextRequest) {
         const status = subscription.status;
         const customerId = subscription.customer as string;
         
-        // If subscription is not active/trialing, set active to false
+        // If subscription is not active/trialing, handle without relying on active column
         if (status !== "active" && status !== "trialing") {
           // Connect to database directly
           const sql = postgres(process.env.DATABASE_URL!);
@@ -82,14 +81,13 @@ export async function POST(req: NextRequest) {
           if (users.length > 0) {
             const userId = users[0].user_id;
             
-            // Update subscription to inactive
+            // We can't rely on active column, so we'll just remove the subscription
             await sql`
-              UPDATE subscriptions 
-              SET active = ${false}, updated_at = NOW()
+              DELETE FROM subscriptions
               WHERE user_id = ${userId}
             `;
             
-            console.log(`User ${userId} downgraded due to subscription ${status}`);
+            console.log(`User ${userId} subscription removed due to status: ${status}`);
           }
           
           // Close the connection

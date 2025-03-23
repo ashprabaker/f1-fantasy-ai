@@ -6,7 +6,7 @@ import { useAuth } from "@clerk/nextjs"
 import { Check } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { getProfile, fixSubscription } from "@/app/pricing/actions"
+import { fixSubscription } from "@/app/pricing/actions"
 import { toast } from "@/components/ui/use-toast"
 
 export default function PricingPage() {

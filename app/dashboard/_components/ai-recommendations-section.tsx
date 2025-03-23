@@ -1,18 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { useEffect, useState } from "react"
+import { generateTeamRecommendationsAction, getRecommendationAction } from "@/actions/ai-recommendation-actions"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { generateTeamRecommendationsAction, getRecommendationAction } from "@/actions/ai-recommendation-actions"
-import { toast } from "sonner"
-import { SelectTeam, SelectMarketDriver, SelectMarketConstructor, SelectDriver, SelectConstructor } from "@/db/schema"
-import { Brain } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Brain } from "lucide-react"
+import { useAuth } from "@clerk/nextjs"
+import { SelectDriver, SelectMarketDriver, SelectMarketConstructor, SelectConstructor, SelectTeam } from "@/db/schema"
+import { toast } from "sonner"
 import { DriverCard } from "./driver-card"
 import { ConstructorCard } from "./constructor-card"
 import ReactMarkdown from "react-markdown"
-import { useAuth } from "@clerk/nextjs"
 
 interface TeamWithMembers extends SelectTeam {
   drivers: SelectDriver[];
@@ -44,31 +44,6 @@ export default function AIRecommendationsSection({
   const [recommendation, setRecommendation] = useState<RecommendationData | null>(null)
   const [showRecommendationDialog, setShowRecommendationDialog] = useState(false)
   const [activeTab, setActiveTab] = useState("current")
-  const [rateLimitInfo, setRateLimitInfo] = useState<{
-    canMakeRequest: boolean;
-    resetTime: Date | null;
-    requestsRemaining: number;
-  } | null>(null)
-  
-  // Check rate limit on component mount
-  useEffect(() => {
-    const checkRateLimit = async () => {
-      if (!userId) return
-      
-      try {
-        const { checkRecommendationRateLimitAction } = await import('@/actions/db/profiles-actions')
-        const result = await checkRecommendationRateLimitAction(userId)
-        
-        if (result.isSuccess && result.data) {
-          setRateLimitInfo(result.data)
-        }
-      } catch (error) {
-        console.error("Error checking rate limit:", error)
-      }
-    }
-    
-    checkRateLimit()
-  }, [userId])
   
   // Setup polling for recommendation status
   useEffect(() => {
@@ -138,13 +113,6 @@ export default function AIRecommendationsSection({
           // Start polling for results
           toast.info("Generating recommendations, this may take a moment...")
           setIsPolling(true)
-          
-          // Update rate limit info after successful request
-          const { checkRecommendationRateLimitAction } = await import('@/actions/db/profiles-actions')
-          const rateLimitResult = await checkRecommendationRateLimitAction(userId)
-          if (rateLimitResult.isSuccess && rateLimitResult.data) {
-            setRateLimitInfo(rateLimitResult.data)
-          }
         } else {
           // Immediately get the results if they're ready
           const recommendationResult = await getRecommendationAction(userId)
@@ -153,13 +121,6 @@ export default function AIRecommendationsSection({
             setRecommendation(recommendationResult.data)
             setShowRecommendationDialog(true)
             setIsLoading(false)
-            
-            // Update rate limit info after successful request
-            const { checkRecommendationRateLimitAction } = await import('@/actions/db/profiles-actions')
-            const rateLimitResult = await checkRecommendationRateLimitAction(userId)
-            if (rateLimitResult.isSuccess && rateLimitResult.data) {
-              setRateLimitInfo(rateLimitResult.data)
-            }
           } else {
             // Fall back to polling if something went wrong
             setIsPolling(true)
@@ -173,26 +134,6 @@ export default function AIRecommendationsSection({
       console.error("Error generating recommendations:", error)
       toast.error("An error occurred while generating recommendations")
       setIsLoading(false)
-    }
-  }
-  
-  // Format time until reset
-  const formatTimeUntilReset = () => {
-    if (!rateLimitInfo?.resetTime) return null
-    
-    const now = new Date()
-    const resetTime = new Date(rateLimitInfo.resetTime)
-    const diffMs = resetTime.getTime() - now.getTime()
-    
-    if (diffMs <= 0) return "soon"
-    
-    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60))
-    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-    
-    if (diffHrs > 0) {
-      return `${diffHrs}h ${diffMins}m`
-    } else {
-      return `${diffMins}m`
     }
   }
   
@@ -218,32 +159,14 @@ export default function AIRecommendationsSection({
             <li>Upcoming race conditions</li>
             <li>Recent form and momentum</li>
           </ul>
-          
-          {rateLimitInfo && (
-            <div className="text-xs text-muted-foreground mt-4 flex justify-between items-center">
-              <span>
-                Recommendations remaining: {rateLimitInfo.requestsRemaining}
-              </span>
-              {!rateLimitInfo.canMakeRequest && rateLimitInfo.resetTime && (
-                <span>
-                  Resets in: {formatTimeUntilReset()}
-                </span>
-              )}
-            </div>
-          )}
         </CardContent>
         <CardFooter>
           <Button 
             onClick={getRecommendations} 
-            disabled={isLoading || isPolling || (rateLimitInfo?.canMakeRequest === false)}
+            disabled={isLoading || isPolling}
             className="w-full"
           >
-            {isLoading || isPolling ? 
-              "Generating Recommendations..." : 
-              rateLimitInfo?.canMakeRequest === false ?
-              "Daily Limit Reached" :
-              "Get AI Recommendations"
-            }
+            {isLoading || isPolling ? "Generating Recommendations..." : "Get AI Recommendations"}
           </Button>
         </CardFooter>
       </Card>
