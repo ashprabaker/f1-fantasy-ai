@@ -259,16 +259,24 @@ async function startBackgroundSync() {
       
       console.log("[F1-SYNC] Extracting driver data with AI...")
       const extractStartTime = Date.now()
+      
+      // Add retry logic using different extraction approaches
       fantasyDrivers = await withRetry(() => extractDriverData(driverContent), {
-        maxRetries: 2,
-        initialDelay: 1000,
-        maxDelay: 5000,
-        factor: 1.5,
+        maxRetries: 3,
+        initialDelay: 2000,
+        maxDelay: 8000,
+        factor: 2,
         retryOnError: (err) => {
-          // Only retry data extraction on specific errors
-          return !(err instanceof DataExtractionError);
+          // Retry extraction on all errors except when we've tried all possible methods
+          const message = err.message || String(err);
+          const isPermError = message.includes("No driver data found") || 
+                             message.includes("parsing AI driver data response");
+          
+          console.log(`[F1-SYNC] Extraction error: ${message}, retryable: ${!isPermError}`);
+          return !isPermError;
         }
       });
+      
       console.log(`[F1-SYNC] Driver extraction completed in ${Date.now() - extractStartTime}ms`)
       console.log(`[F1-SYNC] Extracted ${fantasyDrivers.length} drivers from F1 Fantasy`)
     } catch (error: unknown) {

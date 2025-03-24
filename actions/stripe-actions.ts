@@ -1,9 +1,10 @@
 "use server"
 
 import { updateProfile, updateProfileByStripeCustomerId } from "@/db/queries/profiles-queries";
-import { SelectProfile } from "@/db/schema";
+import { SelectProfile, subscriptionsTable } from "@/db/schema";
 import { stripe } from "@/lib/stripe";
 import Stripe from "stripe";
+import { db } from "@/db/db";
 
 type MembershipStatus = SelectProfile["membership"];
 
@@ -82,4 +83,46 @@ export const manageSubscriptionStatusChange = async (subscriptionId: string, cus
     console.error("Error in manageSubscriptionStatusChange:", error);
     throw error instanceof Error ? error : new Error("Failed to update subscription status");
   }
-}; 
+};
+
+export async function getProfile(userId: string | null | undefined) {
+  if (!userId) return { isSuccess: false, message: "", data: undefined }
+  
+  const { getProfileAction } = await import("@/actions/db/profiles-actions")
+  return getProfileAction(userId)
+}
+
+export async function fixSubscription(userId: string | null | undefined) {
+  if (!userId) return { isSuccess: false, message: "Not authenticated", data: undefined }
+  
+  try {
+    const { fixSubscriptionMembershipAction } = await import("@/actions/db/profiles-actions")
+    const result = await fixSubscriptionMembershipAction(userId)
+    
+    // If the fix was successful, update the subscriptions table as well
+    if (result.isSuccess && result.data) {
+      // Update subscriptions table using Drizzle ORM
+      await db.insert(subscriptionsTable)
+        .values({
+          userId: userId,
+          active: true,
+          stripeCustomerId: result.data.stripeCustomerId || undefined,
+          stripeSubscriptionId: result.data.stripeSubscriptionId || undefined
+        })
+        .onConflictDoUpdate({
+          target: subscriptionsTable.userId,
+          set: {
+            active: true,
+            stripeCustomerId: result.data.stripeCustomerId || undefined,
+            stripeSubscriptionId: result.data.stripeSubscriptionId || undefined,
+            updatedAt: new Date()
+          }
+        })
+    }
+    
+    return result
+  } catch (error) {
+    console.error("Error fixing subscription:", error)
+    return { isSuccess: false, message: "An error occurred", data: undefined }
+  }
+}

@@ -4,7 +4,6 @@ import { openai } from "@/lib/openai";
 import { ActionState } from "@/types";
 import { SelectMarketDriver, SelectMarketConstructor, SelectDriver, SelectConstructor } from "@/db/schema";
 import { z } from "zod";
-import { zodResponseFormat } from "openai/helpers/zod";
 
 interface TeamData {
   drivers: SelectDriver[];
@@ -35,6 +34,50 @@ const recommendationStore = new Map<string, {
   inProgress: boolean;
   timestamp: number;
 }>();
+
+/**
+ * Helper function to clean response content from markdown code blocks that LLMs might return
+ */
+function cleanResponseJson(content: string): string {
+  // Handle null or undefined content
+  if (!content) {
+    return "{}";
+  }
+
+  // If the response contains markdown code fences (```json), extract just the JSON content
+  if (content.includes("```")) {
+    // Find the start of JSON after the code fence
+    const jsonStart = content.indexOf("```") + 3;
+    // Skip the language identifier line if present (e.g., ```json)
+    const contentStart = content.indexOf("\n", jsonStart) + 1;
+    // Find the end closing fence
+    const jsonEnd = content.lastIndexOf("```");
+    
+    if (jsonEnd > contentStart) {
+      // Extract only the content between code fences
+      return content.substring(contentStart, jsonEnd).trim();
+    }
+  }
+  
+  // Handle leading/trailing whitespace
+  content = content.trim();
+
+  // If content starts with a valid JSON character, return it
+  if (content.startsWith("{") || content.startsWith("[")) {
+    return content;
+  }
+  
+  // If we get here, try to find any JSON-like content
+  const jsonStartIndex = content.indexOf("{");
+  const jsonEndIndex = content.lastIndexOf("}");
+  
+  if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
+    return content.substring(jsonStartIndex, jsonEndIndex + 1);
+  }
+  
+  // Return the original content if we can't find any JSON structure
+  return content;
+}
 
 export async function generateTeamRecommendationsAction(
   teamData: TeamData,
@@ -169,9 +212,9 @@ async function generateRecommendationInBackground(
       - totalCost: The calculated total cost of your recommended team (which must be under $${FIXED_BUDGET}M)
     `;
     
-    // Call OpenAI API with structured output format
-    const completion = await openai.beta.chat.completions.parse({
-      model: "gpt-4o",
+    // Call OpenRouter API with structured output format
+    const completion = await openai.chat.completions.create({
+      model: "google/gemini-pro-1.5",
       messages: [
         {
           role: "system",
@@ -180,6 +223,8 @@ async function generateRecommendationInBackground(
                    Your analysis should be written in Markdown format with proper headings, bullet points, and formatting.
                    Always calculate the total cost of your recommended team and verify it is under budget before responding.
                    Include performance insights and value analysis for each recommended driver and constructor.
+                   
+                   CRITICAL: Your response MUST be just valid JSON with no markdown or code fence blocks.
                    You must return a properly structured JSON response with exactly 5 drivers and 2 constructors.`
         },
         {
@@ -187,16 +232,71 @@ async function generateRecommendationInBackground(
           content: prompt
         }
       ],
-      response_format: zodResponseFormat(F1RecommendationSchema, "recommendation"),
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "f1_recommendation",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              analysis: {
+                type: "string",
+                description: "Detailed analysis of the current team, explanation for recommended changes, and insights into the value proposition of each selected driver and constructor. Use Markdown formatting."
+              },
+              recommendedDrivers: {
+                type: "array",
+                description: "List of exactly 5 driver names for the recommended team. These must be exact matches of names from the available drivers list.",
+                items: { type: "string" }
+              },
+              recommendedConstructors: {
+                type: "array",
+                description: "List of exactly 2 constructor names for the recommended team. These must be exact matches of names from the available constructors list.",
+                items: { type: "string" }
+              },
+              totalCost: {
+                type: "number",
+                description: "The calculated total cost of the recommended team in millions. This must be less than the fixed budget of 100M."
+              }
+            },
+            required: ["analysis", "recommendedDrivers", "recommendedConstructors", "totalCost"]
+          }
+        }
+      },
       temperature: 0.7,
-      max_tokens: 2000
+      max_tokens: 100000
     });
     
-    // Extract the parsed response
-    const aiResponse = completion.choices[0].message.parsed;
+    // Extract the response content and parse it
+    // Add error handling for response structure
+    if (!completion.choices?.length || !completion.choices[0]) {
+      console.error("Invalid response structure from OpenRouter:", completion);
+      recommendationStore.set(userId, {
+        recommendation: null,
+        inProgress: false,
+        timestamp: Date.now()
+      });
+      return;
+    }
     
-    // If parsed response is null, handle the error
-    if (!aiResponse) {
+    const responseContent = completion.choices[0].message?.content;
+    if (!responseContent) {
+      recommendationStore.set(userId, {
+        recommendation: null,
+        inProgress: false,
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
+    // Parse the JSON response
+    let aiResponse: AIRecommendationResponse;
+    try {
+      // Clean the response content to handle markdown code blocks
+      const cleanedContent = cleanResponseJson(responseContent);
+      aiResponse = JSON.parse(cleanedContent) as AIRecommendationResponse;
+    } catch (error) {
+      console.error("Error parsing AI recommendation:", error);
       recommendationStore.set(userId, {
         recommendation: null,
         inProgress: false,
