@@ -9,6 +9,10 @@ import {
   createMarketConstructor,
   updateMarketData
 } from "@/db/queries/market-data-queries"
+import { 
+  getDriverPerformanceData, 
+  getConstructorPerformanceData 
+} from "@/lib/services/ergast-service"
 import { InsertMarketDriver, InsertMarketConstructor, SelectMarketDriver, SelectMarketConstructor } from "@/db/schema"
 import { ActionState } from "@/types"
 import { revalidatePath } from "next/cache"
@@ -682,6 +686,48 @@ async function startBackgroundSync() {
         driversUpdated: 0,
         constructorsUpdated: 0
       }
+    }
+  }
+}
+
+/**
+ * Action to get driver performance data from Ergast API
+ */
+export async function getDriverPerformanceAction(driverId: string, year?: number): Promise<ActionState<any>> {
+  try {
+    const data = await getDriverPerformanceData(driverId, year)
+    return {
+      isSuccess: true,
+      message: "Driver performance data retrieved successfully",
+      data
+    }
+  } catch (error) {
+    console.error("Error getting driver performance data:", error)
+    return { 
+      isSuccess: false, 
+      message: "Failed to get driver performance data",
+      data: null
+    }
+  }
+}
+
+/**
+ * Action to get constructor/team performance data from Ergast API
+ */
+export async function getConstructorPerformanceAction(constructorId: string, year?: number): Promise<ActionState<any>> {
+  try {
+    const data = await getConstructorPerformanceData(constructorId, year)
+    return {
+      isSuccess: true,
+      message: "Constructor performance data retrieved successfully",
+      data
+    }
+  } catch (error) {
+    console.error("Error getting constructor performance data:", error)
+    return { 
+      isSuccess: false, 
+      message: "Failed to get constructor performance data",
+      data: null
     }
   }
 }
