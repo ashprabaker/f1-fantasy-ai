@@ -11,7 +11,7 @@ interface TeamSelectorProps {
   selectedYear?: number
 }
 
-export function TeamSelector({ onSelect, selectedYear }: TeamSelectorProps) {
+export function TeamSelector({ onSelect }: TeamSelectorProps) {
   const [teams, setTeams] = useState<SelectMarketConstructor[]>([])
   const [isLoading, setIsLoading] = useState(true)
   

@@ -11,7 +11,7 @@ interface DriverSelectorProps {
   selectedYear?: number
 }
 
-export function DriverSelector({ onSelect, selectedYear }: DriverSelectorProps) {
+export function DriverSelector({ onSelect }: DriverSelectorProps) {
   const [drivers, setDrivers] = useState<SelectMarketDriver[]>([])
   const [isLoading, setIsLoading] = useState(true)
   

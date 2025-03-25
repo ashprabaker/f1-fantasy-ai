@@ -21,7 +21,8 @@ interface PerformanceChartsProps {
 }
 
 export function PerformanceCharts({ results }: PerformanceChartsProps) {
-  const [chartType, setChartType] = useState("position")
+  // Default chart type is position
+  const [, setChartType] = useState("position")
   
   // Sort results by date (descending)
   const sortedResults = [...results].sort((a, b) => 
@@ -31,14 +32,14 @@ export function PerformanceCharts({ results }: PerformanceChartsProps) {
   // Generate data for position comparison chart
   const positionData = sortedResults.map(race => ({
     race: race.raceName,
-    grid: parseInt(race.grid),
-    finish: parseInt(race.position),
+    grid: typeof race.grid === 'string' ? parseInt(race.grid) : race.grid,
+    finish: typeof race.position === 'string' ? parseInt(race.position) : race.position,
   }))
 
   // Generate data for points progression chart
   const pointsData = sortedResults.map(race => ({
     race: race.raceName,
-    points: parseFloat(race.points)
+    points: typeof race.points === 'string' ? parseFloat(race.points) : race.points
   }))
 
   return (

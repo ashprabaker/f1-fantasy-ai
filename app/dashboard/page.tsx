@@ -9,9 +9,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { LineChart, Users, AlertTriangle, Brain, BarChart4, Activity, Calendar, CloudRain } from "lucide-react"
 import { SelectTeam, SelectDriver, SelectConstructor, SelectMarketDriver, SelectMarketConstructor } from "@/db/schema"
-import { db } from "@/db/db"
-import { driversTable, constructorsTable } from "@/db/schema"
-import { eq } from "drizzle-orm"
+// Import necessary components
 import AIRecommendationsSection from "./_components/ai-recommendations-section"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -30,10 +28,11 @@ interface TeamWithMembers extends SelectTeam {
 export default function DashboardPage() {
   const { userId } = useAuth()
   const [activeTab, setActiveTab] = useState("overview")
-  const [teamResult, setTeamResult] = useState<any>(null)
+  const [teamResult, setTeamResult] = useState<Record<string, unknown> | null>(null)
   const [marketDrivers, setMarketDrivers] = useState<SelectMarketDriver[]>([])
   const [marketConstructors, setMarketConstructors] = useState<SelectMarketConstructor[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // Loading state for data fetching
+  const [, setIsLoading] = useState(true)
   const [team, setTeam] = useState<TeamWithMembers | undefined>(undefined)
   
   useEffect(() => {
@@ -61,12 +60,10 @@ export default function DashboardPage() {
         
         // If team exists, fetch team members
         if (teamRes.isSuccess && teamRes.data) {
-          const teamId = teamRes.data.id
-          
           // Fetch team drivers and constructors using server actions
-          const teamId2 = teamRes.data.id
-          const driversRes2 = await fetch(`/api/team/${teamId2}/drivers`)
-          const constructorsRes2 = await fetch(`/api/team/${teamId2}/constructors`)
+          const teamIdForApi = teamRes.data.id
+          const driversRes2 = await fetch(`/api/team/${teamIdForApi}/drivers`)
+          const constructorsRes2 = await fetch(`/api/team/${teamIdForApi}/constructors`)
           
           let teamDrivers: SelectDriver[] = []
           let teamConstructors: SelectConstructor[] = []

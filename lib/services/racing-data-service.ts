@@ -9,7 +9,7 @@
  */
 
 import { getCurrentSeasonData } from "./openf1-service"
-import { format, addDays } from "date-fns"
+import { format } from "date-fns"
 
 // Types for race prediction data
 export interface RacePrediction {
@@ -123,6 +123,92 @@ export interface WeatherImpact {
     keyConsiderations: string[]
   }
 }
+
+interface Driver {
+  id: string;
+  name: string;
+  team: string;
+  isRookie: boolean;
+}
+
+interface Climate {
+  hot: boolean;
+  temperate: boolean;
+  rainy: boolean;
+  season: string;
+}
+
+interface Race {
+  name: string;
+  circuit: string;
+  climate: Climate;
+}
+
+// Climate mapping for realistic weather patterns based on location and time of year
+const locationClimates: Record<string, Climate> = {
+  "bahrain": { hot: true, temperate: false, rainy: false, season: "spring" },
+  "saudi-arabia": { hot: true, temperate: false, rainy: false, season: "spring" },
+  "australia": { hot: false, temperate: true, rainy: true, season: "spring" },
+  "japan": { hot: false, temperate: true, rainy: true, season: "spring" },
+  "china": { hot: false, temperate: true, rainy: true, season: "spring" },
+  "miami": { hot: true, temperate: false, rainy: true, season: "spring" },
+  "monaco": { hot: false, temperate: true, rainy: true, season: "spring" },
+  "canada": { hot: false, temperate: true, rainy: true, season: "summer" },
+  "spain": { hot: false, temperate: true, rainy: true, season: "spring" },
+  "austria": { hot: false, temperate: true, rainy: true, season: "summer" },
+  "britain": { hot: false, temperate: true, rainy: true, season: "summer" },
+  "hungary": { hot: false, temperate: true, rainy: true, season: "summer" },
+  "belgium": { hot: false, temperate: true, rainy: true, season: "summer" },
+  "netherlands": { hot: false, temperate: true, rainy: true, season: "summer" },
+  "italy": { hot: false, temperate: true, rainy: true, season: "summer" },
+  "azerbaijan": { hot: true, temperate: false, rainy: false, season: "spring" },
+  "singapore": { hot: true, temperate: false, rainy: true, season: "fall" },
+  "united-states": { hot: false, temperate: true, rainy: true, season: "fall" },
+  "mexico": { hot: false, temperate: true, rainy: true, season: "fall" },
+  "brazil": { hot: false, temperate: true, rainy: true, season: "fall" },
+  "las-vegas": { hot: false, temperate: true, rainy: false, season: "fall" },
+  "qatar": { hot: true, temperate: false, rainy: false, season: "fall" },
+  "abu-dhabi": { hot: true, temperate: false, rainy: false, season: "fall" }
+}
+
+// Shared races data
+const races: Record<string, Race> = {
+  "australia": { 
+    name: "Australian Grand Prix", 
+    circuit: "Albert Park",
+    climate: { hot: false, temperate: true, rainy: true, season: "spring" }
+  },
+  "bahrain": { 
+    name: "Bahrain Grand Prix", 
+    circuit: "Bahrain International Circuit",
+    climate: { hot: true, temperate: false, rainy: false, season: "spring" }
+  },
+  "saudi-arabia": { 
+    name: "Saudi Arabian Grand Prix", 
+    circuit: "Jeddah Street Circuit",
+    climate: { hot: true, temperate: false, rainy: false, season: "spring" }
+  },
+  "japan": { 
+    name: "Japanese Grand Prix", 
+    circuit: "Suzuka International Racing Course",
+    climate: { hot: false, temperate: true, rainy: true, season: "spring" }
+  },
+  "china": { 
+    name: "Chinese Grand Prix", 
+    circuit: "Shanghai International Circuit",
+    climate: { hot: false, temperate: true, rainy: true, season: "spring" }
+  },
+  "miami": { 
+    name: "Miami Grand Prix", 
+    circuit: "Miami International Autodrome",
+    climate: { hot: true, temperate: false, rainy: true, season: "spring" }
+  },
+  "monaco": { 
+    name: "Monaco Grand Prix", 
+    circuit: "Circuit de Monaco",
+    climate: { hot: false, temperate: true, rainy: true, season: "spring" }
+  }
+};
 
 /**
  * Get upcoming races for the current F1 season
@@ -327,7 +413,7 @@ export async function getRacePrediction(raceId: string): Promise<RacePrediction 
     };
     
     // Driver prediction calculation
-    const calculateDriverPrediction = (driver: any): DriverPrediction => {
+    const calculateDriverPrediction = (driver: Driver): DriverPrediction => {
       // Base team performance (60% of total)
       const teamScore = teamPerformance[driver.team] || 5.0;
       
@@ -519,17 +605,6 @@ export async function getRacePrediction(raceId: string): Promise<RacePrediction 
     let raceName = "Grand Prix";
     let circuitName = "Circuit";
     
-    // Races lookup - this would come from API in real code
-    const races = {
-      "australia": { name: "Australian Grand Prix", circuit: "Albert Park" },
-      "bahrain": { name: "Bahrain Grand Prix", circuit: "Bahrain International Circuit" },
-      "saudi-arabia": { name: "Saudi Arabian Grand Prix", circuit: "Jeddah Street Circuit" },
-      "japan": { name: "Japanese Grand Prix", circuit: "Suzuka International Racing Course" },
-      "china": { name: "Chinese Grand Prix", circuit: "Shanghai International Circuit" },
-      "miami": { name: "Miami Grand Prix", circuit: "Miami International Autodrome" },
-      "monaco": { name: "Monaco Grand Prix", circuit: "Circuit de Monaco" }
-    };
-    
     if (races[raceId as keyof typeof races]) {
       raceName = races[raceId as keyof typeof races].name;
       circuitName = races[raceId as keyof typeof races].circuit;
@@ -558,48 +633,9 @@ export async function getRacePrediction(raceId: string): Promise<RacePrediction 
  */
 export async function getWeatherAnalysis(raceId: string): Promise<WeatherAnalysis | null> {
   try {
-    // Lookup race info based on ID - this would come from API in real code
-    const races = {
-      "australia": { 
-        name: "Australian Grand Prix", 
-        circuit: "Albert Park",
-        climate: { hot: true, rainy: true, season: "autumn" }
-      },
-      "bahrain": { 
-        name: "Bahrain Grand Prix", 
-        circuit: "Bahrain International Circuit",
-        climate: { hot: true, rainy: false, season: "spring" }
-      },
-      "saudi-arabia": { 
-        name: "Saudi Arabian Grand Prix", 
-        circuit: "Jeddah Street Circuit",
-        climate: { hot: true, rainy: false, season: "spring" }
-      },
-      "japan": { 
-        name: "Japanese Grand Prix", 
-        circuit: "Suzuka International Racing Course",
-        climate: { temperate: true, rainy: true, season: "spring" }
-      },
-      "china": { 
-        name: "Chinese Grand Prix", 
-        circuit: "Shanghai International Circuit",
-        climate: { temperate: true, rainy: true, season: "spring" }
-      },
-      "miami": { 
-        name: "Miami Grand Prix", 
-        circuit: "Miami International Autodrome",
-        climate: { hot: true, rainy: true, season: "spring" }
-      },
-      "monaco": { 
-        name: "Monaco Grand Prix", 
-        circuit: "Circuit de Monaco",
-        climate: { temperate: true, rainy: true, season: "spring" }
-      }
-    };
-    
     let raceName = "Grand Prix";
     let circuitName = "Circuit";
-    let climate = { temperate: true, rainy: false, season: "summer" };
+    let climate: Climate = { hot: false, temperate: true, rainy: false, season: "summer" };
     
     if (races[raceId as keyof typeof races]) {
       raceName = races[raceId as keyof typeof races].name;
@@ -609,20 +645,14 @@ export async function getWeatherAnalysis(raceId: string): Promise<WeatherAnalysi
     
     // Generate deterministic temperature range based on climate
     const getTempRange = () => {
-      // Use race ID as seed for deterministic random values
-      const seed = raceId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      const getRandom = (min: number, max: number, offset: number = 0) => {
-        const x = Math.sin((seed + offset) * 100) * 10000;
-        const rand = x - Math.floor(x); // 0-1 based on seed
-        return min + Math.floor(rand * (max - min + 1));
-      };
+      const climate = locationClimates[raceId] || { hot: false, temperate: true, rainy: false, season: "summer" } as Climate;
       
       if (climate.hot) {
-        return { low: 25 + getRandom(0, 5), high: 30 + getRandom(0, 10, 1) };
+        return { low: 25 + Math.floor(Math.random() * 5), high: 30 + Math.floor(Math.random() * 10) };
       } else if (climate.temperate) {
-        return { low: 15 + getRandom(0, 5), high: 20 + getRandom(0, 10, 1) };
+        return { low: 15 + Math.floor(Math.random() * 5), high: 20 + Math.floor(Math.random() * 10) };
       } else {
-        return { low: 5 + getRandom(0, 5), high: 10 + getRandom(0, 10, 1) };
+        return { low: 5 + Math.floor(Math.random() * 5), high: 10 + Math.floor(Math.random() * 10) };
       }
     };
     
@@ -670,8 +700,9 @@ export async function getWeatherAnalysis(raceId: string): Promise<WeatherAnalysi
     const generateHistoricalData = (): HistoricalWeather[] => {
       const currentYear = new Date().getFullYear();
       const years = Array.from({ length: 5 }, (_, i) => currentYear - i - 1);
+      const climate = locationClimates[raceId] || { hot: false, temperate: true, rainy: false, season: "summer" };
       
-      return years.map((year, i) => {
+      return years.map(year => {
         const raceTemp = climate.hot ? 
           25 + Math.floor(Math.random() * 10) : 
           climate.temperate ? 
@@ -681,15 +712,8 @@ export async function getWeatherAnalysis(raceId: string): Promise<WeatherAnalysi
         const qualifyingTemp = raceTemp + Math.floor(Math.random() * 5) - 2;
         const practiceTemp = raceTemp + Math.floor(Math.random() * 5) - 2;
         
-        // Use deterministic random for weather based on year and race
-        const yearSeed = year + raceId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const x1 = Math.sin(yearSeed) * 10000;
-        const x2 = Math.sin(yearSeed + 1) * 10000;
-        const rand1 = x1 - Math.floor(x1);
-        const rand2 = x2 - Math.floor(x2);
-        
-        const rainedDuringWeekend = climate.rainy ? rand1 > 0.5 ? 1 : 0 : rand1 > 0.8 ? 1 : 0;
-        const rainedDuringRace = rainedDuringWeekend && rand2 > 0.5 ? 1 : 0;
+        const rainedDuringWeekend = climate.rainy ? Math.random() > 0.5 ? 1 : 0 : Math.random() > 0.8 ? 1 : 0;
+        const rainedDuringRace = rainedDuringWeekend && Math.random() > 0.5 ? 1 : 0;
         
         const getCondition = (rained: boolean, temp: number) => {
           if (rained && Math.random() > 0.5) return "Rain";
@@ -708,9 +732,6 @@ export async function getWeatherAnalysis(raceId: string): Promise<WeatherAnalysi
           "Carlos Sainz", "Sergio Perez", "George Russell", "Fernando Alonso"
         ];
         
-        // Deterministic winner based on year and race
-        const winnerIndex = Math.floor((Math.sin(yearSeed + 2) * 10000 - Math.floor(Math.sin(yearSeed + 2) * 10000)) * topDrivers.length);
-        
         return {
           year,
           raceTemp,
@@ -721,7 +742,7 @@ export async function getWeatherAnalysis(raceId: string): Promise<WeatherAnalysi
           raceWeather,
           qualifyingWeather,
           practiceWeather,
-          winner: topDrivers[winnerIndex]
+          winner: topDrivers[Math.floor(Math.random() * topDrivers.length)]
         };
       });
     };

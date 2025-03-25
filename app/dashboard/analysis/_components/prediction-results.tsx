@@ -13,6 +13,7 @@ import { InfoIcon } from "lucide-react"
 interface PredictionResult {
   id: string
   name: string
+  fullName?: string    // Added as optional since it might be used in some contexts
   team: string
   probability: number
   calculationFactors?: {
@@ -55,7 +56,8 @@ export default function PredictionResults({ predictions, confidence }: Predictio
     name: driver.name.split(' ')[1] || driver.name, // Use last name for display
     fullName: driver.name,
     team: driver.team,
-    probability: driver.probability
+    probability: driver.probability,
+    note: driver.note // Make sure to include the note property
   })).sort((a, b) => b.probability - a.probability)
   
   // Team colors for bars

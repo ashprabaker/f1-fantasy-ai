@@ -163,11 +163,13 @@ async function startBackgroundSync() {
     let f1Drivers: Driver[] = []
     let f1DriverMap = new Map<string, Driver>()
     let f1TeamNameMap = new Map<string, string>() // Maps normalized team names to original casing
+    // Initialize empty currentData for global scope
+    let currentData: any = { drivers: [], fastestLapDriver: null, results: {} }
     
     try {
       console.log("[F1-SYNC] Fetching F1 API data for 2025 season...")
       // Use retry for the API call that's failing in production
-      const currentData = await withRetry(() => getCurrentSeasonData(), {
+      currentData = await withRetry(() => getCurrentSeasonData(), {
         maxRetries: 5,
         initialDelay: 2000,
         maxDelay: 15000,

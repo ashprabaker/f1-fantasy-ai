@@ -1,6 +1,6 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+// import ui components as needed
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 interface PerformanceData {
@@ -75,7 +75,7 @@ export default function PerformanceChart({ data }: PerformanceChartProps) {
             />
             <Tooltip 
               labelFormatter={(value) => `Race: ${value}`}
-              formatter={(value, name, props) => {
+              formatter={(value, name) => {
                 return [value, name];
               }}
               wrapperStyle={{ fontSize: '12px', padding: '5px' }}
@@ -110,7 +110,12 @@ export default function PerformanceChart({ data }: PerformanceChartProps) {
       )}
       <div className="text-xs text-center mt-2 text-muted-foreground">
         {chartData.length > 0 
-          ? `Race results from the ${chartData[0]?.race?.match(/\((\d{4})\)/) ? chartData[0]?.race?.match(/\((\d{4})\)/)[1] : ''} season`
+          ? `Race results from the ${
+              chartData[0]?.race && 
+              chartData[0].race.match(/\((\d{4})\)/) ? 
+                chartData[0].race.match(/\((\d{4})\)/)![1] : 
+                new Date().getFullYear()
+            } season`
           : 'No race data available for this season'
         }
       </div>

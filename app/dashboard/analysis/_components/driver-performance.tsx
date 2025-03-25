@@ -13,10 +13,71 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+// Define proper types for the driver performance data
+interface DriverInfo {
+  name: string;
+  team: string;
+  nationality: string;
+  seasons: number;
+  number: string;
+}
+
+interface DriverStats {
+  championships: number;
+  wins: number;
+  podiums: number;
+  poles: number;
+  fastestLaps: number;
+  points: number;
+}
+
+interface RaceResult {
+  round: string;
+  raceName: string;
+  circuitName: string;
+  date: string;
+  grid: number;
+  position: number;
+  points: number;
+  status: string;
+  year: string; // Season year
+}
+
+interface CircuitStats {
+  circuit: string;         // To match CircuitData.circuit in CircuitPerformance
+  circuitId?: string;      // Keep old property as optional
+  circuitName?: string;    // Keep old property as optional
+  bestResult: number;      // To match CircuitData.bestResult
+  bestPosition?: number;   // Keep old property as optional
+  avgPosition: number;     // Already matches CircuitData.avgPosition
+  totalRaces: number;      // To match CircuitData.totalRaces
+  raceCount?: number;      // Keep old property as optional
+  pointsPerRace?: number;  // Keep old property as optional
+}
+
+// Interface for season data which contains wins, podiums, etc.
+interface SeasonStat {
+  year: number;        // Ensure year is a number to match SeasonData in DriverStatsTable
+  position: number;    // Using number to match SeasonData
+  points: number;      // Using number to match SeasonData
+  wins: number;        // Using number to match SeasonData
+  podiums: number;     // Using number to match SeasonData
+  races?: number;      // Optional races count
+}
+
+interface DriverPerformanceData {
+  driverInfo: DriverInfo;
+  stats: DriverStats;
+  seasonResults: RaceResult[];
+  seasonData: SeasonStat[]; // Season statistics
+  circuitPerformance: CircuitStats[];
+  recentForm: { race: string; position: number; points: number; date: string }[]; // For performance chart
+}
+
 export default function DriverPerformance() {
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null)
   const [selectedYear, setSelectedYear] = useState<number>(2024)
-  const [performanceData, setPerformanceData] = useState<any>(null)
+  const [performanceData, setPerformanceData] = useState<DriverPerformanceData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [availableYears, setAvailableYears] = useState<number[]>([])
@@ -47,7 +108,7 @@ export default function DriverPerformance() {
         console.log(`Fetching data for driver: ${selectedDriver}, year: ${selectedYear}`)
         const result = await getDriverPerformanceAction(selectedDriver, selectedYear)
         if (result.isSuccess && result.data) {
-          setPerformanceData(result.data)
+          setPerformanceData(result.data as DriverPerformanceData)
         } else {
           setError(result.message || "Failed to load driver data")
         }

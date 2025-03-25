@@ -13,10 +13,74 @@ import DriverContribution from "./driver-contribution"
 import TeamStatsTable from "./team-stats-table"
 import { getConstructorPerformanceAction } from "@/actions/db/market-data-actions"
 
+// Define proper types for team performance data
+interface TeamInfo {
+  id: string;
+  name: string;
+  color: string;
+  nationality: string;
+}
+
+interface TeamStats {
+  championships: number;
+  wins: number;
+  podiums: number;
+  points: number;
+  poles: number;
+  fastestLaps: number;
+}
+
+interface RaceResult {
+  round: string;
+  raceName: string;
+  circuitName: string;
+  date: string;
+  grid: number;
+  position: number;
+  points: number;
+}
+
+// Different RaceResult format used by performance chart
+interface ChartRaceResult {
+  race: string;
+  position: number;
+  points: number;
+  date: string;
+}
+
+interface DriverContributionData {
+  name: string;       // Name instead of driver to match DriverData
+  points: number;
+  wins: number;       // Required by DriverData
+  podiums: number;    // Required by DriverData
+  percentage?: number; // Keep as optional
+}
+
+interface TeamPerformanceData {
+  teamInfo: TeamInfo;
+  stats: TeamStats;
+  seasonResults: RaceResult[];
+  raceResults: ChartRaceResult[];  // Different format specifically for the chart
+  driverContribution: DriverContributionData[];
+  seasonComparison: {
+    year: number;
+    points: number;
+    position: number;
+    wins: number;
+  }[];
+  seasonData: {
+    year: number;
+    points: number;
+    position: number;
+    wins: number;
+    podiums: number;
+  }[];
+}
+
 export default function TeamAnalysis() {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null)
   const [selectedYear, setSelectedYear] = useState<number>(2024)
-  const [performanceData, setPerformanceData] = useState<any>(null)
+  const [performanceData, setPerformanceData] = useState<TeamPerformanceData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [availableYears, setAvailableYears] = useState<number[]>([])
@@ -48,7 +112,7 @@ export default function TeamAnalysis() {
         const result = await getConstructorPerformanceAction(selectedTeam, selectedYear)
         
         if (result.isSuccess && result.data) {
-          setPerformanceData(result.data)
+          setPerformanceData(result.data as TeamPerformanceData)
         } else {
           setError("Failed to load team data")
         }

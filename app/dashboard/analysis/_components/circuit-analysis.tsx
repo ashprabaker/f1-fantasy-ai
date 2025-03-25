@@ -7,9 +7,10 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 interface CircuitDriverPerformance {
   driver: string
   team: string
-  bestFinish: number
-  avgFinish: number
+  bestFinish: number | string
+  avgFinish: number | string
   winProbability: number
+  rookieNote?: string
 }
 
 interface CircuitAnalysisProps {

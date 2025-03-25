@@ -26,7 +26,8 @@ interface DriverSelectorProps {
 
 export function DriverSelector({ initialDrivers = [], defaultDriver }: DriverSelectorProps) {
   const [open, setOpen] = useState(false)
-  const [drivers, setDrivers] = useState<Array<{ driverId: string; fullName: string }>>(
+  // Using initialDrivers directly as the default state value
+  const [drivers] = useState<Array<{ driverId: string; fullName: string }>>(
     Array.isArray(initialDrivers) ? initialDrivers : []
   )
   const [selectedDriver, setSelectedDriver] = useState(defaultDriver || "")

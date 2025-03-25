@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button"
 import { 
   LayoutDashboard,
   LineChart,
-  Users,
-  BarChart4
+  Users
 } from "lucide-react"
 
 const items = [

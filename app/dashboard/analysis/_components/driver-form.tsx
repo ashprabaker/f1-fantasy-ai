@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge"
 interface DriverFormEntry {
   driver: string
   team: string
-  lastFive: number[] // Recent race positions
-  trend: "up" | "down" | "neutral"
-  formRating: number // 0-100 rating
+  lastFive: (number | string)[] // Recent race positions
+  trend: "up" | "down" | "neutral" | string
+  formRating: number | string // 0-100 rating or "N/A"
+  rookieNote?: string
 }
 
 interface DriverFormProps {
@@ -66,25 +67,25 @@ export default function DriverForm({ driverForm }: DriverFormProps) {
   )
 }
 
-function FormBadge({ position }: { position: number }) {
+function FormBadge({ position }: { position: number | string }) {
   let variant = "default"
   
-  if (position === 1) {
+  if (position === 1 || position === "1") {
     variant = "destructive" // First place (gold)
-  } else if (position <= 3) {
+  } else if (typeof position === 'number' && position <= 3) {
     variant = "secondary" // Podium (silver)
-  } else if (position <= 10) {
+  } else if (typeof position === 'number' && position <= 10) {
     variant = "outline" // Points (bronze)
   }
   
   return (
-    <Badge variant={variant as any} className="w-6 h-6 flex items-center justify-center p-0">
+    <Badge variant={variant as "default" | "destructive" | "secondary" | "outline"} className="w-6 h-6 flex items-center justify-center p-0">
       {position}
     </Badge>
   )
 }
 
-function FormTrend({ trend }: { trend: string }) {
+function FormTrend({ trend }: { trend: "up" | "down" | "neutral" | string }) {
   if (trend === "up") {
     return (
       <div className="flex items-center text-green-500">

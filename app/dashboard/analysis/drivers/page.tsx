@@ -4,12 +4,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { DriverSelectorFetcher } from "./_server/driver-selector-fetcher"
 import { DriverPerformanceFetcher } from "./_server/driver-performance-fetcher"
 
-export default function DriversPage({
-  searchParams
-}: {
-  searchParams: { driver?: string }
-}) {
-  const driverId = searchParams?.driver || ""
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function DriversPage(props: any) {
+  const driverId = props.searchParams?.driver || ""
   
   return (
     <div className="space-y-6">

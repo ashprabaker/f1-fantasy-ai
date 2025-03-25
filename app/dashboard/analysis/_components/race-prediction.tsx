@@ -12,13 +12,24 @@ import CircuitAnalysis from "./circuit-analysis"
 import PredictionResults from "./prediction-results"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
+import type { RacePrediction } from "@/lib/services/racing-data-service"
 
 export default function RacePrediction() {
   const [selectedRace, setSelectedRace] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [predictions, setPredictions] = useState<any>(null)
-  const [availableRaces, setAvailableRaces] = useState<any[]>([])
+  const [predictions, setPredictions] = useState<RacePrediction | null>(null)
+  // Define the Race interface to ensure consistency
+  interface Race {
+    id: string; 
+    raceId: string; // Keep both for compatibility
+    raceName: string;
+    name: string;    // Alternative name property
+    date: string;
+    circuit?: string; // Circuit name
+  }
+  
+  const [availableRaces, setAvailableRaces] = useState<Race[]>([])
   
   // Load available races for the current season
   useEffect(() => {
@@ -29,13 +40,13 @@ export default function RacePrediction() {
         // Fetch from racing-data-service
         // This will eventually use the OpenF1 and Ergast APIs for real data
         const response = await fetch('/api/race-prediction/races');
-        const mockRaces = await response.json();
+        const mockRaces: Race[] = await response.json();
         
         // Sort races by date and filter out past races
         const currentDate = new Date()
         const upcomingRaces = mockRaces
-          .filter(race => new Date(race.date) >= currentDate)
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .filter((race: Race) => new Date(race.date) >= currentDate)
+          .sort((a: Race, b: Race) => new Date(a.date).getTime() - new Date(b.date).getTime())
         
         setAvailableRaces(upcomingRaces)
         
@@ -130,7 +141,7 @@ export default function RacePrediction() {
                     {availableRaces.length > 0 ? (
                       availableRaces.map((race) => (
                         <SelectItem key={race.id} value={race.id}>
-                          {race.name} - {new Date(race.date).toLocaleDateString()}
+                          {race.name || race.raceName} - {new Date(race.date).toLocaleDateString()}
                         </SelectItem>
                       ))
                     ) : (
@@ -176,9 +187,9 @@ export default function RacePrediction() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{selectedRaceData.name}</CardTitle>
+              <CardTitle>{selectedRaceData.name || selectedRaceData.raceName}</CardTitle>
               <CardDescription>
-                {selectedRaceData.circuit} - {new Date(selectedRaceData.date).toLocaleDateString()}
+                {selectedRaceData.circuit || "TBD"} - {new Date(selectedRaceData.date).toLocaleDateString()}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -200,7 +211,7 @@ export default function RacePrediction() {
                 <TabsContent value="circuit" className="pt-4">
                   <CircuitAnalysis 
                     circuitId={selectedRaceData.id}
-                    circuitName={selectedRaceData.circuit}
+                    circuitName={selectedRaceData.circuit || selectedRaceData.raceName || "Circuit"}
                     driverPerformance={predictions.circuitPerformance}
                   />
                 </TabsContent>
@@ -273,8 +284,7 @@ function FactorCard({ title, value, description }: { title: string, value: strin
   )
 }
 
-// Prediction generator using deterministic values based on circuit and drivers
-// so results remain stable between refreshes
+/* Removing unused function as it's not needed in production code
 function generateMockPredictions(raceId: string) {
   // Current F1 drivers for 2025 - matched to the team selection data
   // This is the accurate 2025 driver lineup with correct rookie status
@@ -447,7 +457,7 @@ function generateMockPredictions(raceId: string) {
   };
   
   // Calculate prediction with detailed factors
-  const calculateDriverPrediction = (driver: any) => {
+  const calculateDriverPrediction = (driver: {name: string; team: string; isRookie: boolean}) => {
     // Base team performance (60% of total)
     const teamScore = teamPerformance[driver.team] || 5.0;
     
@@ -569,7 +579,7 @@ function generateMockPredictions(raceId: string) {
   });
   
   // Generate driver form data
-  const generateRecentForm = (driver: any) => {
+  const generateRecentForm = (driver: {name: string}) => {
     const skillRating = driverSkill[driver.name] || 7.0;
     const currentFormRating = currentForm[driver.name] || 6.0;
     const combinedRating = (skillRating * 0.5 + currentFormRating * 0.5) / 10;
@@ -695,3 +705,4 @@ function generateMockPredictions(raceId: string) {
     confidence: Math.round(confidence)
   }
 }
+*/

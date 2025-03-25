@@ -10,8 +10,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { LineChart, BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { Brain, Calendar, Check, CloudRain, ChevronsUpDown, AlertCircle, TrendingUp, Zap, AlertTriangle, ThumbsUp, Ban, LineChart as LineChartIcon, BarChart3, BarChart4, Activity, Gauge } from "lucide-react"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { Brain, Calendar, CloudRain, ChevronsUpDown, AlertCircle, AlertTriangle, ThumbsUp, BarChart3, Activity, Gauge } from "lucide-react"
 import { useAuth } from "@clerk/nextjs"
 import { SelectDriver, SelectMarketDriver, SelectMarketConstructor, SelectConstructor, SelectTeam } from "@/db/schema"
 import { toast } from "sonner"
@@ -223,10 +223,11 @@ export default function AIRecommendationsSection({
       };
     }
 
-    if (!rec.driverComparisons) {
-      // Generate comparisons between current and recommended
-      rec.driverComparisons = [];
-      
+    // Initialize driverComparisons array
+    rec.driverComparisons = rec.driverComparisons || [];
+    
+    // If it's empty, generate comparisons between current and recommended
+    if (rec.driverComparisons.length === 0) {
       // For each current driver not in recommended team
       team.drivers.forEach(currentDriver => {
         const isInRecommended = rec.recommendedTeam.drivers.some(
@@ -243,7 +244,14 @@ export default function AIRecommendationsSection({
             const currentMarketDriver = marketDrivers.find(md => md.name === currentDriver.name);
             
             if (currentMarketDriver) {
-              rec.driverComparisons.push({
+              // Add type assertion to ensure TypeScript understands driverComparisons is defined
+              (rec.driverComparisons as Array<{
+                currentDriver: string;
+                recommendedDriver: string;
+                reasonForChange: string;
+                pointsDifference: number;
+                priceDifference: number;
+              }>).push({
                 currentDriver: currentDriver.name,
                 recommendedDriver: newDriver.name,
                 reasonForChange: `Better value and recent performance on similar tracks to upcoming races.`,
@@ -538,7 +546,11 @@ export default function AIRecommendationsSection({
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="name" />
                                 <YAxis label={{ value: 'Points per Million', angle: -90, position: 'insideLeft' }} />
-                                <Tooltip formatter={(value) => [`${value.toFixed(2)} pts/M`, 'Value']} />
+                                <Tooltip formatter={(value) => {
+                                  // Handle both string and number types
+                                  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+                                  return [`${typeof numValue === 'number' ? numValue.toFixed(2) : '0.00'} pts/M`, 'Value'];
+                                }} />
                                 <Bar dataKey="value" fill="#8884d8" />
                               </BarChart>
                             </ResponsiveContainer>
@@ -666,7 +678,7 @@ export default function AIRecommendationsSection({
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                               <h3 className="font-medium mb-2">Weather Forecast</h3>
-                              <Alert variant="outline" className="mb-4">
+                              <Alert className="mb-4">
                                 <CloudRain className="h-4 w-4 mr-2" />
                                 {enhancedRecommendation.upcomingRaceAnalysis?.weatherForecast}
                               </Alert>
@@ -736,7 +748,7 @@ export default function AIRecommendationsSection({
                                   <AccordionTrigger className="py-2">Wet Race Strategy</AccordionTrigger>
                                   <AccordionContent>
                                     <p className="text-sm text-muted-foreground mb-2">
-                                      If there's rain, the race could see increased safety car periods. Your recommended team has several drivers who excel in changing conditions, giving you an advantage.
+                                      If there&apos;s rain, the race could see increased safety car periods. Your recommended team has several drivers who excel in changing conditions, giving you an advantage.
                                     </p>
                                     <div className="flex flex-wrap gap-1 text-xs">
                                       <Badge variant="outline">Intermediate tires crucial</Badge>

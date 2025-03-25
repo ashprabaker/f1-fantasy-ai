@@ -75,7 +75,7 @@ export default function TeamPerformanceChart({ data }: TeamPerformanceChartProps
             />
             <Tooltip 
               labelFormatter={(value) => `Race: ${value}`}
-              formatter={(value, name, props) => {
+              formatter={(value, name) => {
                 if (name === "Position" && value === null) {
                   return ["Did not participate", name];
                 }
@@ -114,7 +114,12 @@ export default function TeamPerformanceChart({ data }: TeamPerformanceChartProps
       )}
       <div className="text-xs text-center mt-2 text-muted-foreground">
         {chartData.length > 0 
-          ? `Race results from the ${chartData[0]?.race?.match(/\((\d{4})\)/) ? chartData[0]?.race?.match(/\((\d{4})\)/)[1] : ''} season`
+          ? `Race results from the ${
+              chartData[0]?.race && 
+              chartData[0].race.match(/\((\d{4})\)/) ? 
+                chartData[0].race.match(/\((\d{4})\)/)![1] : 
+                new Date().getFullYear()
+            } season`
           : 'No race data available for this season'
         }
       </div>

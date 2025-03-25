@@ -6,6 +6,14 @@
 
 const BASE_URL = "https://ergast.com/api/f1"
 
+interface SeasonData {
+  season: string;
+}
+
+interface Season {
+  season: string;
+}
+
 export interface DriverPerformanceData {
   driverInfo: {
     id: string;
@@ -35,11 +43,6 @@ export interface DriverPerformanceData {
 }
 
 /**
- * Fetches driver performance data including seasonal stats, recent form, and circuit performance
- * @param driverId The Ergast driver ID
- * @param year Optional year to focus analysis on (defaults to current year)
- */
-/**
  * Maps common F1 driver names to their Ergast API driver IDs
  */
 const DRIVER_ID_MAPPING: Record<string, string> = {
@@ -68,7 +71,6 @@ const DRIVER_ID_MAPPING: Record<string, string> = {
   "Oliver Bearman": "bearman",
   
   // Additional variations for name matching
-  "Valtteri Bottas": "bottas",
   "Alex Albon": "albon",
   "Nicholas Latifi": "latifi",
   "Mick Schumacher": "mick_schumacher",
@@ -79,13 +81,10 @@ const DRIVER_ID_MAPPING: Record<string, string> = {
   "Nikita Mazepin": "mazepin",
   "Antonio Giovinazzi": "giovinazzi",
   "Romain Grosjean": "grosjean",
-  "Kevin Magnussen": "kevin_magnussen",
   "Daniil Kvyat": "kvyat",
-  "Pierre Gasly": "gasly",
   "Brendon Hartley": "hartley",
   "Stoffel Vandoorne": "vandoorne",
   "Marcus Ericsson": "ericsson",
-  "Charles Leclerc": "leclerc",
   "Sergey Sirotkin": "sirotkin",
   "Jolyon Palmer": "jolyon_palmer",
   "Pascal Wehrlein": "wehrlein",
@@ -186,6 +185,43 @@ function mapToErgastDriverId(driverIdOrName: string): string {
   return potentialId;
 }
 
+interface Circuit {
+  circuitId: string;
+  circuitName: string;
+  Location: {
+    lat: string;
+    long: string;
+    locality: string;
+    country: string;
+  };
+}
+
+interface ApiResponse<T> {
+  MRData: {
+    DriverTable?: {
+      Drivers: T[];
+    };
+    ConstructorTable?: {
+      Constructors: T[];
+    };
+    StandingsTable?: {
+      StandingsLists: {
+        DriverStandings?: DriverStanding[];
+        ConstructorStandings?: ConstructorStanding[];
+      }[];
+    };
+    RaceTable?: {
+      Races: Race[];
+    };
+    SeasonTable?: {
+      Seasons: SeasonData[];
+    };
+    CircuitTable?: {
+      Circuits: Circuit[];
+    };
+  };
+}
+
 export async function getDriverPerformanceData(driverId: string, year?: number): Promise<DriverPerformanceData> {
   // Initialize all year-related variables at the top of the function
   const currentYear = new Date().getFullYear();
@@ -202,15 +238,15 @@ export async function getDriverPerformanceData(driverId: string, year?: number):
     if (!driverResponse.ok) {
       throw new Error(`Failed to fetch driver data: ${driverResponse.statusText}`);
     }
-    const driverData = await driverResponse.json();
-    const driver = driverData.MRData.DriverTable.Drivers[0];
+    const driverData = await driverResponse.json() as ApiResponse<DriverData>;
+    const driver = driverData.MRData.DriverTable!.Drivers[0];
     
     // Fetch racing seasons data for the driver
     const seasonsResponse = await fetch(`${BASE_URL}/drivers/${ergastDriverId}/seasons.json`);
     if (!seasonsResponse.ok) {
       throw new Error(`Failed to fetch driver seasons: ${seasonsResponse.statusText}`);
     }
-    const seasonsData = await seasonsResponse.json();
+    const seasonsData = await seasonsResponse.json() as ApiResponse<SeasonData>;
     
     // For the season data analysis, focus exactly on the selected year
     // If the selected year is in the future, fall back to the current year
@@ -218,37 +254,43 @@ export async function getDriverPerformanceData(driverId: string, year?: number):
     
     // If selected year is in the future and not in available seasons, use current year
     const effectiveYear = analysisYear > currentYear && 
-      !seasonsData.MRData.SeasonTable.Seasons.some((s: any) => s.season === selectedYearStr)
+      !seasonsData.MRData.SeasonTable?.Seasons.some((s: SeasonData) => s.season === selectedYearStr)
         ? currentYear
         : analysisYear;
     
     // Just select the exact season requested
-    const seasons = [effectiveYear.toString()];
+    const seasons = seasonsData.MRData.SeasonTable?.Seasons || [];
     
     // Fetch standings for each season
     const seasonData = await Promise.all(
-      seasons.map(async (year: string) => {
+      seasons.map(async (seasonData: SeasonData) => {
+        const year = seasonData.season;
         const standingsResponse = await fetch(`${BASE_URL}/${year}/drivers/${ergastDriverId}/driverStandings.json`);
         if (!standingsResponse.ok) {
           return null;
         }
-        const standingsData = await standingsResponse.json();
-        if (standingsData.MRData.StandingsTable.StandingsLists.length === 0) {
+        
+        const standingsData = await standingsResponse.json() as ApiResponse<DriverStanding>;
+        if (!standingsData.MRData.StandingsTable?.StandingsLists.length) {
           return null;
         }
         
-        const standing = standingsData.MRData.StandingsTable.StandingsLists[0].DriverStandings[0];
+        const standing = standingsData.MRData.StandingsTable.StandingsLists[0].DriverStandings?.[0];
+        if (!standing) {
+          return null;
+        }
         
         // Get race results for podium count
         const resultsResponse = await fetch(`${BASE_URL}/${year}/drivers/${ergastDriverId}/results.json`);
         if (!resultsResponse.ok) {
           return null;
         }
-        const resultsData = await resultsResponse.json();
-        const races = resultsData.MRData.RaceTable.Races;
+        
+        const resultsData = await resultsResponse.json() as ApiResponse<Race>;
+        const races = resultsData.MRData.RaceTable?.Races || [];
         
         // Count podiums (positions 1-3)
-        const podiums = races.filter((race: any) => {
+        const podiums = races.filter((race: Race) => {
           const position = parseInt(race.Results[0].position);
           return position <= 3;
         }).length;
@@ -276,11 +318,11 @@ export async function getDriverPerformanceData(driverId: string, year?: number):
     if (!circuitsResponse.ok) {
       throw new Error(`Failed to fetch circuit data for ${effectiveYear}: ${circuitsResponse.statusText}`);
     }
-    const circuitsData = await circuitsResponse.json();
+    const circuitsData = await circuitsResponse.json() as ApiResponse<Circuit>;
     
     // Process circuit performance for the selected year
     const circuitPerformance = await Promise.all(
-      circuitsData.MRData.CircuitTable.Circuits.slice(0, 5).map(async (circuit: any) => {
+      (circuitsData.MRData.CircuitTable?.Circuits || []).slice(0, 5).map(async (circuit: Circuit) => {
         // Get the driver's results for this circuit for the effective year
         const resultsResponse = await fetch(`${BASE_URL}/${effectiveYear}/drivers/${ergastDriverId}/circuits/${circuit.circuitId}/results.json`);
         if (!resultsResponse.ok) {
@@ -292,8 +334,8 @@ export async function getDriverPerformanceData(driverId: string, year?: number):
           };
         }
         
-        const resultsData = await resultsResponse.json();
-        const races = resultsData.MRData.RaceTable.Races;
+        const resultsData = await resultsResponse.json() as ApiResponse<Race>;
+        const races = resultsData.MRData.RaceTable?.Races || [];
         
         if (races.length === 0) {
           return {
@@ -305,7 +347,7 @@ export async function getDriverPerformanceData(driverId: string, year?: number):
         }
         
         // Calculate metrics
-        const positions = races.map((race: any) => parseInt(race.Results[0].position));
+        const positions = races.map((race: Race) => parseInt(race.Results[0].position));
         const bestResult = Math.min(...positions);
         const avgPosition = positions.reduce((sum: number, pos: number) => sum + pos, 0) / positions.length;
         
@@ -323,20 +365,23 @@ export async function getDriverPerformanceData(driverId: string, year?: number):
     if (!recentResultsResponse.ok) {
       throw new Error(`Failed to fetch results for ${effectiveYear}: ${recentResultsResponse.statusText}`);
     }
-    const recentResultsData = await recentResultsResponse.json();
+    const recentResultsData = await recentResultsResponse.json() as ApiResponse<Race>;
     
     // Process race results for the effective year
-    let recentForm = [];
+    const recentForm: {
+      race: string;
+      position: number;
+      points: number;
+      date: string;
+    }[] = [];
     
-    if (recentResultsData.MRData.RaceTable.Races && recentResultsData.MRData.RaceTable.Races.length > 0) {
-      recentForm = recentResultsData.MRData.RaceTable.Races.map((race: any) => {
-        return {
-          race: `${race.raceName} (${effectiveYear})`, // Add year for clarity
-          position: parseInt(race.Results[0].position),
-          points: parseFloat(race.Results[0].points),
-          date: race.date
-        };
-      }).reverse();
+    if (recentResultsData.MRData.RaceTable?.Races?.length) {
+      recentForm.push(...recentResultsData.MRData.RaceTable.Races.map((race: Race) => ({
+        race: `${race.raceName} (${effectiveYear})`,
+        position: parseInt(race.Results[0].position),
+        points: parseFloat(race.Results[0].points),
+        date: race.date
+      })).reverse());
     } else {
       console.log(`No race results found for driver ${ergastDriverId} in ${effectiveYear}`);
     }
@@ -344,7 +389,7 @@ export async function getDriverPerformanceData(driverId: string, year?: number):
     // Get current team from most recent result or from standalone lookup
     let currentTeam = "";
     
-    if (recentResultsData.MRData.RaceTable.Races && recentResultsData.MRData.RaceTable.Races.length > 0) {
+    if (recentResultsData.MRData.RaceTable?.Races?.length) {
       currentTeam = recentResultsData.MRData.RaceTable.Races[0].Results[0].Constructor.name;
     } else {
       // Try to get the team from the driver's market data if available
@@ -401,15 +446,15 @@ export async function getDriverPerformanceData(driverId: string, year?: number):
 /**
  * Fetches list of all F1 drivers
  */
-export async function getAllDrivers() {
+export async function getAllDrivers(): Promise<{ id: string; name: string; nationality: string; }[]> {
   try {
     const response = await fetch(`${BASE_URL}/drivers.json?limit=100&offset=0`);
     if (!response.ok) {
       throw new Error(`Failed to fetch drivers: ${response.statusText}`);
     }
     
-    const data = await response.json();
-    return data.MRData.DriverTable.Drivers.map((driver: any) => ({
+    const data = await response.json() as ApiResponse<DriverData>;
+    return (data.MRData.DriverTable?.Drivers || []).map((driver: DriverData) => ({
       id: driver.driverId,
       name: `${driver.givenName} ${driver.familyName}`,
       nationality: driver.nationality
@@ -569,15 +614,15 @@ export async function getConstructorPerformanceData(constructorId: string, year?
     if (!constructorResponse.ok) {
       throw new Error(`Failed to fetch constructor data: ${constructorResponse.statusText}`);
     }
-    const constructorData = await constructorResponse.json();
-    const constructor = constructorData.MRData.ConstructorTable.Constructors[0];
+    const constructorData = await constructorResponse.json() as ApiResponse<ConstructorData>;
+    const constructor = constructorData.MRData.ConstructorTable!.Constructors[0];
     
     // Fetch racing seasons data for the constructor
     const seasonsResponse = await fetch(`${BASE_URL}/constructors/${ergastConstructorId}/seasons.json`);
     if (!seasonsResponse.ok) {
       throw new Error(`Failed to fetch constructor seasons: ${seasonsResponse.statusText}`);
     }
-    const seasonsData = await seasonsResponse.json();
+    const seasonsData = await seasonsResponse.json() as ApiResponse<SeasonData>;
     
     // For the season data analysis, focus exactly on the selected year
     // If the selected year is in the future, fall back to the current year
@@ -585,53 +630,58 @@ export async function getConstructorPerformanceData(constructorId: string, year?
     
     // If selected year is in the future and not in available seasons, use current year
     const effectiveYear = analysisYear > currentYear && 
-      !seasonsData.MRData.SeasonTable.Seasons.some((s: any) => s.season === selectedYearStr)
+      !seasonsData.MRData.SeasonTable?.Seasons.some((s: SeasonData) => s.season === selectedYearStr)
         ? currentYear
         : analysisYear;
     
     // Just select the exact season requested
-    const seasons = [effectiveYear.toString()];
+    const selectedSeasons = [effectiveYear.toString()];
     
     // Add the previous two seasons for comparison if they exist
-    if (effectiveYear > 1950) {
+    if (effectiveYear > 1950 && seasonsData.MRData.SeasonTable?.Seasons) {
       const prevSeasons = seasonsData.MRData.SeasonTable.Seasons
-        .map((season: any) => season.season)
+        .map((season: Season) => season.season)
         .filter((seasonYear: string) => {
           const year = parseInt(seasonYear);
           return year >= effectiveYear - 2 && year < effectiveYear;
         });
       
-      seasons.push(...prevSeasons);
+      selectedSeasons.push(...prevSeasons);
     }
     
     // Fetch standings for each season
     const seasonData = await Promise.all(
-      seasons.map(async (year: string) => {
+      selectedSeasons.map(async (year: string) => {
         const standingsResponse = await fetch(`${BASE_URL}/${year}/constructors/${ergastConstructorId}/constructorStandings.json`);
         if (!standingsResponse.ok) {
           return null;
         }
-        const standingsData = await standingsResponse.json();
-        if (standingsData.MRData.StandingsTable.StandingsLists.length === 0) {
+        
+        const standingsData = await standingsResponse.json() as ApiResponse<ConstructorStanding>;
+        if (!standingsData.MRData.StandingsTable?.StandingsLists.length) {
           return null;
         }
         
-        const standing = standingsData.MRData.StandingsTable.StandingsLists[0].ConstructorStandings[0];
+        const standing = standingsData.MRData.StandingsTable.StandingsLists[0].ConstructorStandings?.[0];
+        if (!standing) {
+          return null;
+        }
         
         // Get race results to count wins and podiums
         const resultsResponse = await fetch(`${BASE_URL}/${year}/constructors/${ergastConstructorId}/results.json`);
         if (!resultsResponse.ok) {
           return null;
         }
-        const resultsData = await resultsResponse.json();
-        const races = resultsData.MRData.RaceTable.Races;
+        
+        const resultsData = await resultsResponse.json() as ApiResponse<Race>;
+        const races = resultsData.MRData.RaceTable?.Races || [];
         
         // Count wins (positions 1) and podiums (positions 1-3) for both drivers combined
         let wins = 0;
         let podiums = 0;
         
-        races.forEach((race: any) => {
-          race.Results.forEach((result: any) => {
+        races.forEach((race: Race) => {
+          race.Results?.forEach((result: RaceResult) => {
             const position = parseInt(result.position);
             if (position === 1) wins++;
             if (position <= 3) podiums++;
@@ -656,34 +706,44 @@ export async function getConstructorPerformanceData(constructorId: string, year?
     if (!allRacesResponse.ok) {
       throw new Error(`Failed to fetch all races for ${effectiveYear}: ${allRacesResponse.statusText}`);
     }
-    const allRacesData = await allRacesResponse.json();
-    const allRaces = allRacesData.MRData.RaceTable.Races || [];
+    const allRacesData = await allRacesResponse.json() as ApiResponse<Race>;
+    const allRaces = allRacesData.MRData.RaceTable?.Races || [];
     
     // Then fetch constructor-specific results
     const raceResultsResponse = await fetch(`${BASE_URL}/${effectiveYear}/constructors/${ergastConstructorId}/results.json?limit=1000`);
     if (!raceResultsResponse.ok) {
       throw new Error(`Failed to fetch race results for ${effectiveYear}: ${raceResultsResponse.statusText}`);
     }
-    const raceResultsData = await raceResultsResponse.json();
+    const raceResultsData = await raceResultsResponse.json() as ApiResponse<Race>;
+    const constructorRaces = raceResultsData.MRData.RaceTable?.Races || [];
     
     // Process race results data
-    const raceResults: any[] = [];
+    const raceResults: {
+      race: string;
+      date: string;
+      position: number;
+      points: number;
+    }[] = [];
     
     // Create a lookup of constructor results by round
-    const constructorResultsByRound: Record<string, any> = {};
+    const constructorResultsByRound: Record<string, {
+      points: number;
+      position: number;
+      results: { position: number; points: number; }[];
+    }> = {};
     
-    if (raceResultsData.MRData.RaceTable.Races && raceResultsData.MRData.RaceTable.Races.length > 0) {
-      raceResultsData.MRData.RaceTable.Races.forEach((race: any) => {
+    if (constructorRaces.length > 0) {
+      constructorRaces.forEach((race: Race) => {
         const round = race.round;
         let points = 0;
-        const results: any[] = [];
+        const results: { position: number; points: number; }[] = [];
         
         // Add each driver result
-        race.Results.forEach((result: any) => {
-          points += parseFloat(result.points || 0);
+        race.Results.forEach((result: RaceResult) => {
+          points += parseFloat(result.points || '0');
           results.push({
             position: parseInt(result.position),
-            points: parseFloat(result.points || 0)
+            points: parseFloat(result.points || '0')
           });
         });
         
@@ -702,7 +762,7 @@ export async function getConstructorPerformanceData(constructorId: string, year?
     }
     
     // Use all races as the basis and add constructor results where available
-    allRaces.forEach((race: any) => {
+    allRaces.forEach((race: Race) => {
       const round = race.round;
       const raceName = race.raceName;
       const date = race.date;
@@ -711,8 +771,8 @@ export async function getConstructorPerformanceData(constructorId: string, year?
       raceResults.push({
         race: `${raceName} (${effectiveYear})`,
         date: date,
-        // If we have results for this round, use them; otherwise set defaults
-        position: constructorResult ? constructorResult.position : null,
+        // If we have results for this round, use them; otherwise use a default position
+        position: constructorResult ? constructorResult.position : 20,
         points: constructorResult ? constructorResult.points : 0
       });
     });
@@ -725,58 +785,61 @@ export async function getConstructorPerformanceData(constructorId: string, year?
     if (!driversResponse.ok) {
       throw new Error(`Failed to fetch constructor drivers for ${effectiveYear}: ${driversResponse.statusText}`);
     }
-    const driversData = await driversResponse.json();
+    const driversData = await driversResponse.json() as ApiResponse<DriverData>;
     
     // Process driver contribution data
-    const driverContribution: any[] = [];
+    const driverContribution: {
+      name: string;
+      points: number;
+      wins: number;
+      podiums: number;
+    }[] = [];
     
-    if (driversData.MRData.DriverTable.Drivers && driversData.MRData.DriverTable.Drivers.length > 0) {
-      const drivers = driversData.MRData.DriverTable.Drivers;
+    const drivers = driversData.MRData.DriverTable?.Drivers || [];
+    
+    // Get data for each driver
+    for (const driver of drivers) {
+      const driverId = driver.driverId;
+      const driverName = `${driver.givenName} ${driver.familyName}`;
       
-      // Get data for each driver
-      for (const driver of drivers) {
-        const driverId = driver.driverId;
-        const driverName = `${driver.givenName} ${driver.familyName}`;
-        
-        // Fetch driver standings to get points
-        const driverStandingsResponse = await fetch(
-          `${BASE_URL}/${effectiveYear}/drivers/${driverId}/constructors/${ergastConstructorId}/status.json`
-        );
-        
-        if (!driverStandingsResponse.ok) continue;
-        
-        const driverResultsResponse = await fetch(
-          `${BASE_URL}/${effectiveYear}/drivers/${driverId}/constructors/${ergastConstructorId}/results.json`
-        );
-        
-        if (!driverResultsResponse.ok) continue;
-        
-        const driverResultsData = await driverResultsResponse.json();
-        const driverRaces = driverResultsData.MRData.RaceTable.Races;
-        
-        // Calculate points, wins, and podiums
-        let points = 0;
-        let wins = 0;
-        let podiums = 0;
-        
-        driverRaces.forEach((race: any) => {
-          if (race.Results && race.Results.length > 0) {
-            const result = race.Results[0];
-            points += parseFloat(result.points || 0);
-            
-            const position = parseInt(result.position);
-            if (position === 1) wins++;
-            if (position <= 3) podiums++;
-          }
-        });
-        
-        driverContribution.push({
-          name: driverName,
-          points: points,
-          wins: wins,
-          podiums: podiums
-        });
-      }
+      // Fetch driver standings to get points
+      const driverStandingsResponse = await fetch(
+        `${BASE_URL}/${effectiveYear}/drivers/${driverId}/constructors/${ergastConstructorId}/status.json`
+      );
+      
+      if (!driverStandingsResponse.ok) continue;
+      
+      const driverResultsResponse = await fetch(
+        `${BASE_URL}/${effectiveYear}/drivers/${driverId}/constructors/${ergastConstructorId}/results.json`
+      );
+      
+      if (!driverResultsResponse.ok) continue;
+      
+      const driverResultsData = await driverResultsResponse.json() as ApiResponse<Race>;
+      const driverRaces = driverResultsData.MRData.RaceTable?.Races || [];
+      
+      // Calculate points, wins, and podiums
+      let points = 0;
+      let wins = 0;
+      let podiums = 0;
+      
+      driverRaces.forEach((race: Race) => {
+        if (race.Results && race.Results.length > 0) {
+          const result = race.Results[0];
+          points += parseFloat(result.points || '0');
+          
+          const position = parseInt(result.position);
+          if (position === 1) wins++;
+          if (position <= 3) podiums++;
+        }
+      });
+      
+      driverContribution.push({
+        name: driverName,
+        points,
+        wins,
+        podiums
+      });
     }
     
     // Sort driver contribution by points (highest first)
@@ -794,8 +857,8 @@ export async function getConstructorPerformanceData(constructorId: string, year?
         color: constructorColor
       },
       seasonData: validSeasonData,
-      raceResults: raceResults,
-      driverContribution: driverContribution
+      raceResults,
+      driverContribution
     };
   } catch (error) {
     console.error("Error fetching constructor performance data:", error);
@@ -862,4 +925,46 @@ function getConstructorColor(constructorName: string): string {
   };
   
   return colorMap[constructorName] || '#666666';
+}
+
+interface RaceResult {
+  position: string;
+  points: string;
+  Constructor: {
+    name: string;
+  };
+}
+
+interface Race {
+  round: string;
+  raceName: string;
+  date: string;
+  Results: RaceResult[];
+}
+
+interface DriverData {
+  driverId: string;
+  givenName: string;
+  familyName: string;
+  nationality: string;
+}
+
+interface ConstructorData {
+  constructorId: string;
+  name: string;
+  nationality: string;
+}
+
+interface Standing {
+  position: string;
+  points: string;
+  wins: string;
+}
+
+interface DriverStanding extends Standing {
+  Driver: DriverData;
+}
+
+interface ConstructorStanding extends Standing {
+  Constructor: ConstructorData;
 }

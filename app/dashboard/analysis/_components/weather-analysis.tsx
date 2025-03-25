@@ -8,17 +8,118 @@ import { AlertCircle } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from 'recharts'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { RefreshCw, Cloud, CloudRain, Sun, Wind, Thermometer } from "lucide-react"
+
+interface WeatherForecastDay {
+  day: string;
+  condition: 'Sunny' | 'Cloudy' | 'Rain' | 'Partly Cloudy';
+  temperature: number;
+  tempLow: number;
+  tempHigh: number;
+  precipitation: number;
+  precipProbability: number;
+  windSpeed: number;
+  humidity: number;
+}
+
+interface WeatherFactor {
+  name: string;
+  level: string;
+  favors: string;
+}
+
+interface HistoricalWeatherData {
+  year: number;
+  condition: string;
+  temperature: number;
+  winner: string;
+  notes: string;
+  raceWeather: string;
+  raceTemp: number;
+  qualifyingWeather: string;
+  qualifyingTemp: number;
+  practiceWeather: string;
+  practiceTemp: number;
+}
+
+interface DriverWetPerformance {
+  driver: string;
+  team: string;
+  wetSkill?: number;
+  isRookie: boolean;
+  wetResults?: {
+    position: number;
+    race: string;
+    year: number;
+  }[];
+  dryVsWet?: {
+    condition: string;
+    avgPosition: number;
+  }[];
+  wetVsDry: {
+    condition: string;
+    value: number;
+  }[] | number;
+  wetPerformance: {
+    rating: number | string;
+    strengths: string[];
+    weaknesses?: string[];
+    notable: string[];
+    improvement: string[];
+  };
+  wetWins: number;
+  rookieNote?: string;
+  rating?: number | string;
+}
+
+interface Race {
+  raceId: string;
+  raceName: string;
+  date: string;
+  circuit: string;
+}
+
+interface WeatherData {
+  forecast: WeatherForecastDay[];
+  impact: WeatherImpactData;
+  historical: HistoricalWeatherData[];
+  driverWetPerformance: DriverWetPerformance[];
+}
+
+interface WeatherImpactData {
+  temperature?: {
+    impact: string;
+    details: string;
+  };
+  precipitation?: {
+    impact: string;
+    details: string;
+  };
+  wind?: {
+    impact: string;
+    details: string;
+  };
+  strategy: {
+    recommendation?: string;
+    details?: string;
+    tires: string | string[];
+    pitStops: string | string[];
+    carSetup: string | string[];
+    keyConsiderations: string[];
+  };
+  teams: Record<string, number>;
+  factors: WeatherFactor[];
+}
 
 export default function WeatherAnalysis() {
   const [selectedRace, setSelectedRace] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [weatherData, setWeatherData] = useState<any>(null)
-  const [availableRaces, setAvailableRaces] = useState<any[]>([])
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
+  const [availableRaces, setAvailableRaces] = useState<Race[]>([])
   
   // Load available races for the current season
   useEffect(() => {
@@ -26,22 +127,25 @@ export default function WeatherAnalysis() {
       try {
         setIsLoading(true)
         
-        // Fetch from racing-data-service API endpoint
-        // This will eventually use the OpenF1 API and weather APIs
-        const response = await fetch('/api/race-prediction/races');
-        const mockRaces = await response.json();
+        // Use our dedicated weather analysis races endpoint
+        const response = await fetch('/api/weather-analysis/races');
+        const races = await response.json();
+        
+        if (!Array.isArray(races)) {
+          throw new Error("Invalid race data format");
+        }
         
         // Sort races by date and filter out past races
         const currentDate = new Date()
-        const upcomingRaces = mockRaces
-          .filter(race => new Date(race.date) >= currentDate)
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        const upcomingRaces = races
+          .filter((race: Race) => new Date(race.date) >= currentDate)
+          .sort((a: Race, b: Race) => new Date(a.date).getTime() - new Date(b.date).getTime())
         
         setAvailableRaces(upcomingRaces)
         
         // Auto-select the next race
         if (upcomingRaces.length > 0) {
-          setSelectedRace(upcomingRaces[0].id)
+          setSelectedRace(upcomingRaces[0].raceId)
         }
       } catch (error) {
         console.error("Error loading races:", error)
@@ -102,7 +206,7 @@ export default function WeatherAnalysis() {
     }
   }
   
-  const selectedRaceData = availableRaces.find(race => race.id === selectedRace)
+  const selectedRaceData = availableRaces.find(race => race.raceId === selectedRace)
   
   return (
     <div className="space-y-6">
@@ -128,13 +232,13 @@ export default function WeatherAnalysis() {
                   </SelectTrigger>
                   <SelectContent>
                     {availableRaces.length > 0 ? (
-                      availableRaces.map((race) => (
-                        <SelectItem key={race.id} value={race.id}>
-                          {race.name} - {new Date(race.date).toLocaleDateString()}
+                      availableRaces.map((race, index) => (
+                        <SelectItem key={`race-${race.raceId}-${index}`} value={race.raceId}>
+                          {race.raceName} - {new Date(race.date).toLocaleDateString()}
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value="loading" disabled>Loading races...</SelectItem>
+                      <SelectItem key="loading-item" value="loading" disabled>Loading races...</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
@@ -175,7 +279,7 @@ export default function WeatherAnalysis() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{selectedRaceData.name} Weather Forecast</CardTitle>
+              <CardTitle>{selectedRaceData.raceName} Weather Forecast</CardTitle>
               <CardDescription>
                 {selectedRaceData.circuit} - Race date: {new Date(selectedRaceData.date).toLocaleDateString()}
               </CardDescription>
@@ -229,12 +333,12 @@ export default function WeatherAnalysis() {
 }
 
 // Component for displaying weather forecast
-function WeatherForecast({ forecast }: { forecast: any[] }) {
+function WeatherForecast({ forecast }: { forecast: WeatherForecastDay[] }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {forecast.map((day, index) => (
-          <Card key={index}>
+          <Card key={`forecast-day-${index}`}>
             <CardContent className="pt-6">
               <div className="text-center">
                 <h3 className="font-medium mb-2">{day.day}</h3>
@@ -298,90 +402,107 @@ function WeatherForecast({ forecast }: { forecast: any[] }) {
 }
 
 // Component for displaying weather impact on performance
-function WeatherImpact({ impact }: { impact: any }) {
-  const teamImpactData = Object.entries(impact.teams).map(([team, value]) => ({
-    team,
-    impact: value
-  })).sort((a, b) => b.impact - a.impact)
+function WeatherImpact({ impact }: { impact: WeatherImpactData }) {
+  // Create default values for fields that might be missing
+  const temperatureData = impact.temperature || { impact: "Temperature will affect tire degradation", details: "Teams will need to monitor track temperatures" };
+  const precipitationData = impact.precipitation || { impact: "Dry conditions expected", details: "Standard tire strategies likely"};
+  const windData = impact.wind || { impact: "Moderate winds expected", details: "Some effect on aerodynamics in high-speed corners" };
   
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Expected Weather Impact</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-sm font-medium mb-2">Team Performance in Expected Conditions</h3>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={teamImpactData}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 90, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" domain={[0, 100]} />
-                    <YAxis type="category" dataKey="team" width={80} />
-                    <Tooltip formatter={(value) => [`${value}%`, 'Performance']} />
-                    <Bar dataKey="impact" fill="#8884d8" />
-                  </BarChart>
-                </ResponsiveContainer>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Thermometer className="h-5 w-5" />
+                <h3 className="font-medium">Temperature Impact</h3>
               </div>
+              <p className="text-sm">{temperatureData.impact}</p>
+              <p className="text-sm text-muted-foreground">{temperatureData.details}</p>
             </div>
-            <div>
-              <h3 className="text-sm font-medium mb-2">Weather Impact Factors</h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Factor</TableHead>
-                    <TableHead>Impact</TableHead>
-                    <TableHead>Favors</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {impact.factors.map((factor: any, index: number) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{factor.name}</TableCell>
-                      <TableCell>
-                        <Badge variant={factor.level === 'High' ? 'destructive' : factor.level === 'Medium' ? 'secondary' : 'outline'}>
-                          {factor.level}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{factor.favors}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <CloudRain className="h-5 w-5" />
+                <h3 className="font-medium">Precipitation Impact</h3>
+              </div>
+              <p className="text-sm">{precipitationData.impact}</p>
+              <p className="text-sm text-muted-foreground">{precipitationData.details}</p>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Wind className="h-5 w-5" />
+                <h3 className="font-medium">Wind Impact</h3>
+              </div>
+              <p className="text-sm">{windData.impact}</p>
+              <p className="text-sm text-muted-foreground">{windData.details}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">Key Weather Factors</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {impact.factors.map((factor, index) => (
+            <Card key={`factor-${index}`}>
+              <CardContent className="pt-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-medium">{factor.name}</h4>
+                    <Badge variant={factor.level === 'High' ? 'destructive' : 'default'}>
+                      {factor.level} Impact
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Favors: {factor.favors}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
       
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Strategy Adjustments</CardTitle>
+          <CardTitle className="text-lg">Strategy Recommendations</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
+        <CardContent className="space-y-6">
+          <div>
+            <h3 className="text-sm font-medium mb-2">Overview</h3>
+            <p className="text-sm">{impact.strategy.recommendation}</p>
+            <p className="text-sm text-muted-foreground mt-2">{impact.strategy.details}</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <h3 className="text-sm font-medium mb-2">Tire Strategy</h3>
-              <p className="text-sm">{impact.strategy.tires}</p>
+              <p className="text-sm">{Array.isArray(impact.strategy.tires) ? impact.strategy.tires.join(', ') : impact.strategy.tires}</p>
             </div>
             <div>
               <h3 className="text-sm font-medium mb-2">Pit Stop Strategy</h3>
-              <p className="text-sm">{impact.strategy.pitStops}</p>
+              <p className="text-sm">{Array.isArray(impact.strategy.pitStops) ? impact.strategy.pitStops.join(', ') : impact.strategy.pitStops}</p>
             </div>
             <div>
               <h3 className="text-sm font-medium mb-2">Car Setup</h3>
-              <p className="text-sm">{impact.strategy.carSetup}</p>
+              <p className="text-sm">{Array.isArray(impact.strategy.carSetup) ? impact.strategy.carSetup.join(', ') : impact.strategy.carSetup}</p>
             </div>
             <div>
               <h3 className="text-sm font-medium mb-2">Key Considerations</h3>
-              <ul className="list-disc pl-5 space-y-1 text-sm">
-                {impact.strategy.keyConsiderations.map((item: string, index: number) => (
-                  <li key={index}>{item}</li>
+              <ul className="text-sm list-disc pl-5">
+                {impact.strategy.keyConsiderations.map((consideration, idx) => (
+                  <li key={`consideration-${idx}`}>{consideration}</li>
                 ))}
               </ul>
             </div>
@@ -389,11 +510,11 @@ function WeatherImpact({ impact }: { impact: any }) {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
 
 // Component for displaying historical weather data
-function HistoricalWeather({ history }: { history: any[] }) {
+function HistoricalWeather({ history }: { history: HistoricalWeatherData[] }) {
   return (
     <div className="space-y-6">
       <div className="h-[300px]">
@@ -426,7 +547,7 @@ function HistoricalWeather({ history }: { history: any[] }) {
         </TableHeader>
         <TableBody>
           {history.map((year) => (
-            <TableRow key={year.year}>
+            <TableRow key={`year-${year.year}`}>
               <TableCell className="font-medium">{year.year}</TableCell>
               <TableCell>
                 <WeatherConditionBadge condition={year.raceWeather} temp={year.raceTemp} />
@@ -447,89 +568,105 @@ function HistoricalWeather({ history }: { history: any[] }) {
 }
 
 // Component for displaying driver wet weather performance
-function WetWeatherPerformance({ driverPerformance }: { driverPerformance: any[] }) {
-  // Filter rookies out for the chart, since they don't have meaningful wet vs dry data
+function WetWeatherPerformance({ driverPerformance }: { driverPerformance: DriverWetPerformance[] }) {
+  // Filter rookies out for the chart
   const chartData = driverPerformance.filter(driver => !driver.isRookie);
   
   return (
-    <div className="space-y-4">
-      <div className="h-[300px]">
+    <div className="space-y-6">
+      <div className="w-full h-[400px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={chartData}
-            margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-          >
+          <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="driver" />
-            <YAxis label={{ value: 'Position Change', angle: -90, position: 'insideLeft' }} />
-            <Tooltip 
-              formatter={(value) => [value > 0 ? `+${value}` : value, 'Avg. Position Change (Wet vs Dry)']}
-              labelFormatter={(value) => `${value} (${chartData.find(d => d.driver === value)?.team})`}
-            />
+            <YAxis label={{ value: 'Performance Delta', angle: -90, position: 'insideLeft' }} />
+            <Tooltip />
             <Legend />
-            <Bar dataKey="wetVsDry" fill="#0090FF" name="Position Change in Wet Conditions">
-              {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.wetVsDry > 0 ? '#00D2BE' : '#DC0000'} />
-              ))}
-            </Bar>
+            <Bar 
+              dataKey={(driver: DriverWetPerformance) => {
+                if (typeof driver.wetVsDry === 'number') {
+                  return driver.wetVsDry;
+                }
+                return Array.isArray(driver.wetVsDry) ? 
+                  driver.wetVsDry.find(d => d.condition === 'wet')?.value || 0 : 0;
+              }}
+              fill="#3b82f6" 
+              name="Wet vs Dry Performance"
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>
       
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Driver</TableHead>
-            <TableHead>Team</TableHead>
-            <TableHead>Wet Performance</TableHead>
-            <TableHead>Wet Race Wins</TableHead>
-            <TableHead>Wet vs Dry</TableHead>
-            <TableHead>Rating</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {driverPerformance.map((driver) => (
-            <TableRow key={driver.driver}>
-              <TableCell className="font-medium">{driver.driver}</TableCell>
-              <TableCell>{driver.team}</TableCell>
-              <TableCell>
-                <Badge 
-                  variant={
-                    driver.wetPerformance === 'Excellent' ? 'default' : 
-                    driver.wetPerformance === 'Good' ? 'secondary' : 
-                    driver.wetPerformance === 'Average' ? 'outline' : 
-                    driver.wetPerformance === 'Unknown' ? 'outline' : 'destructive'
-                  }
-                >
-                  {driver.wetPerformance}
-                </Badge>
-              </TableCell>
-              <TableCell>{driver.wetWins}</TableCell>
-              <TableCell className={
-                driver.isRookie ? 'text-gray-500' :
-                driver.wetVsDry > 0 ? 'text-green-500' : 'text-red-500'
-              }>
-                {driver.isRookie ? "N/A" : (driver.wetVsDry > 0 ? `+${driver.wetVsDry}` : driver.wetVsDry)}
-              </TableCell>
-              <TableCell>
-                {driver.rating === "N/A" ? "N/A" : `${driver.rating}/10`}
-                {driver.rookieNote && (
-                  <div className="mt-1 text-xs text-yellow-600 dark:text-yellow-400 italic">
-                    {driver.rookieNote}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {driverPerformance.map((driver) => (
+          <Card key={`driver-${driver.driver}`}>
+            <CardHeader>
+              <CardTitle className="text-lg">{driver.driver}</CardTitle>
+              <CardDescription>{driver.team}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium mb-2">Wet Weather Rating</h3>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-500 rounded-full" 
+                      style={{ width: typeof driver.wetPerformance.rating === 'number' ? 
+                        `${driver.wetPerformance.rating * 10}%` : '0%' }}
+                    />
                   </div>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                  <span className="text-sm font-medium">
+                    {typeof driver.wetPerformance.rating === 'number' ? 
+                      `${driver.wetPerformance.rating}/10` : 
+                      driver.wetPerformance.rating || "N/A"
+                    }
+                  </span>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-medium mb-2">Wet Weather Strengths</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  {driver.wetPerformance.strengths.map((strength, i) => (
+                    <li key={`${driver.driver}-strength-${i}`} className="text-sm">{strength}</li>
+                  ))}
+                </ul>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-medium mb-2">Areas for Improvement</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  {driver.wetPerformance.improvement.map((area, i) => (
+                    <li key={`${driver.driver}-improvement-${i}`} className="text-sm">{area}</li>
+                  ))}
+                </ul>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-medium mb-2">Notable Wet Weather Performances</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  {driver.wetPerformance.notable.map((performance, i) => (
+                    <li key={`${driver.driver}-notable-${i}`} className="text-sm">{performance}</li>
+                  ))}
+                </ul>
+              </div>
+              
+              <div className="pt-2">
+                <Badge variant="secondary">
+                  {driver.wetWins} Wet Race {driver.wetWins === 1 ? 'Win' : 'Wins'}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
-  )
+  );
 }
 
 // Helper component for weather condition badges
 function WeatherConditionBadge({ condition, temp }: { condition: string, temp: number }) {
-  let variant = "outline"
+  let variant: 'outline' | 'secondary' | 'destructive' | 'default' = "outline"
   let icon = null
   
   switch (condition) {
@@ -553,14 +690,14 @@ function WeatherConditionBadge({ condition, temp }: { condition: string, temp: n
   }
   
   return (
-    <Badge variant={variant as any} className="flex items-center">
+    <Badge variant={variant} className="flex items-center">
       {icon}
       {condition} ({temp}°C)
     </Badge>
   )
 }
 
-// Mock weather data generator
+/* Removing unused function as it's not needed in production code
 function generateMockWeatherData(raceId: string) {
   // Climate mapping for realistic weather patterns based on location and time of year
   const locationClimates: Record<string, any> = {
@@ -834,3 +971,4 @@ function generateMockWeatherData(raceId: string) {
     impact: generateWeatherImpact()
   }
 }
+*/
