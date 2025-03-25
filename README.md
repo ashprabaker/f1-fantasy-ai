@@ -7,14 +7,14 @@ An AI-powered tool built during a hackathon to help F1 Fantasy players optimize 
 <div align="center">
   <p>
     <strong>
-      <a href="https://www.loom.com/share/44537b7266a54be0a5488608fc1b5282?sid=1a060bb4-610f-487c-9cd5-79afdc995a79">
+      <a href="https://www.loom.com/share/956e188fd062467d978a1b72a4518496?sid=07f6680b-1c24-4ac2-bae6-869d3f5824fc">
         🏎️ Watch the F1 Fantasy AI Advisor Demo 🏎️
       </a>
     </strong>
   </p>
   <p>
     <kbd>
-      <a href="https://www.loom.com/share/44537b7266a54be0a5488608fc1b5282?sid=1a060bb4-610f-487c-9cd5-79afdc995a79">
+      <a href="https://www.loom.com/share/956e188fd062467d978a1b72a4518496?sid=07f6680b-1c24-4ac2-bae6-869d3f5824fc">
         <img src="https://img.shields.io/badge/Watch_Demo-FF1E00?style=for-the-badge&logo=formula1&logoColor=white" alt="Watch Demo" />
       </a>
     </kbd>
