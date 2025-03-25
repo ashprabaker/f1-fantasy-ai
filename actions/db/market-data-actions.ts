@@ -18,7 +18,12 @@ import { ActionState } from "@/types"
 import { revalidatePath } from "next/cache"
 import { 
   getCurrentSeasonData,
-  Driver
+  Driver,
+  ConstructorDetails,
+  calculateDriverPoints,
+  calculateDriverPrice,
+  calculateConstructorPoints,
+  calculateConstructorPrice
 } from "@/lib/services/openf1-service"
 import {
   scrapeDriverFantasyData,
@@ -409,6 +414,12 @@ async function startBackgroundSync() {
     // First, get all OpenF1 drivers 
     const openF1DriversMap = new Map<string, InsertMarketDriver>()
     
+    // Get the fastest lap driver for point calculation
+    const fastestLapDriverNumber = currentData.fastestLapDriver || null
+    
+    // Get race results
+    const results = currentData.results || {}
+    
     // Prepare all drivers from OpenF1 API first
     for (const apiDriver of f1Drivers) {
       const driverNumber = apiDriver.driver_number
@@ -419,6 +430,16 @@ async function startBackgroundSync() {
         continue
       }
       
+      // Get the driver's position from race results
+      const position = results[driverNumber] || 0
+      
+      // Calculate price based on performance and team
+      const calculatedPrice = await calculateDriverPrice(apiDriver, position)
+      
+      // Calculate points based on position and fastest lap
+      const hasFastestLap = driverNumber === fastestLapDriverNumber
+      const calculatedPoints = await calculateDriverPoints(position, hasFastestLap)
+      
       // Create a base driver record with OpenF1 data
       const driverRecord = {
         driverNumber,
@@ -427,8 +448,8 @@ async function startBackgroundSync() {
         teamColor: apiDriver.team_colour || "#FFFFFF",
         imageUrl: apiDriver.headshot_url || "",
         countryCode: apiDriver.country_code || "",
-        price: 0, // Will be replaced with fantasy data
-        points: 0  // Will be replaced with fantasy data
+        price: calculatedPrice, // Use calculated price as default
+        points: calculatedPoints  // Use calculated points as default
       }
       
       openF1DriversMap.set(
@@ -452,31 +473,15 @@ async function startBackgroundSync() {
     
     // If we don't have any fantasy drivers, use just the OpenF1 data
     if (fantasyDrivers.length === 0) {
-      console.log("No fantasy driver data - using OpenF1 driver data with default prices and points")
+      console.log("No fantasy driver data - using OpenF1 driver data with calculated prices and points")
       
       // Get a unique set of drivers (the map may have duplicates with different keys)
       const uniqueDrivers = new Map<number, InsertMarketDriver>()
       
       for (const [_, driver] of openF1DriversMap.entries()) {
         if (!uniqueDrivers.has(driver.driverNumber)) {
-          // Assign default price based on team (top teams = higher price)
-          let price = 10.0 // default price
-          
-          const teamNameLower = driver.team.toLowerCase()
-          if (teamNameLower.includes('red bull') || teamNameLower.includes('ferrari') || teamNameLower.includes('mercedes')) {
-            price = 25.0 // top teams
-          } else if (teamNameLower.includes('mclaren') || teamNameLower.includes('aston martin')) {
-            price = 18.0 // mid-high teams
-          } else if (teamNameLower.includes('alpine') || teamNameLower.includes('williams')) {
-            price = 12.0 // mid teams
-          }
-          
-          // Add to unique drivers with default price/points
-          uniqueDrivers.set(driver.driverNumber, {
-            ...driver,
-            price,
-            points: 0 // no fantasy points available
-          })
+          // Add driver with the already calculated price and points from above
+          uniqueDrivers.set(driver.driverNumber, driver)
         }
       }
       
@@ -597,50 +602,108 @@ async function startBackgroundSync() {
     
     console.log(`Built team color map with ${teamColorMap.size} entries`)
     
-    // Process fantasy constructors and ensure we only add each one once
-    for (const fantasyConstructor of fantasyConstructors) {
-      // Normalize the constructor name
-      const normalizedName = fantasyConstructor.name.toLowerCase().trim()
-      
-      // Skip if we already processed this team
-      if (uniqueConstructors.has(normalizedName)) {
-        console.log(`Skipping duplicate constructor: ${fantasyConstructor.name}`)
-        continue
+    // First, create a mapping of team name to drivers
+    const teamDrivers = new Map<string, Driver[]>()
+    
+    // Group drivers by team
+    for (const driver of f1Drivers) {
+      const teamName = driver.team_name
+      if (!teamDrivers.has(teamName)) {
+        teamDrivers.set(teamName, [])
       }
+      teamDrivers.get(teamName)?.push(driver)
+    }
+    
+    console.log(`Created team-to-drivers mapping for ${teamDrivers.size} teams`)
+    
+    // Process fantasy constructors first if available
+    if (fantasyConstructors.length > 0) {
+      console.log("Using fantasy constructor data as primary source...")
       
-      // Find matching team color from OpenF1 data
-      let teamColor = "#FFFFFF"
-      let matchFound = false
-      
-      // Look for direct match first
-      if (teamColorMap.has(normalizedName)) {
-        teamColor = teamColorMap.get(normalizedName)!
-        matchFound = true
-      } else {
-        // Try fuzzy matching
-        for (const [key, color] of teamColorMap.entries()) {
-          if (normalizedName.includes(key) || key.includes(normalizedName)) {
-            teamColor = color
-            matchFound = true
-            break
+      for (const fantasyConstructor of fantasyConstructors) {
+        // Normalize the constructor name
+        const normalizedName = fantasyConstructor.name.toLowerCase().trim()
+        
+        // Skip if we already processed this team
+        if (uniqueConstructors.has(normalizedName)) {
+          console.log(`Skipping duplicate constructor: ${fantasyConstructor.name}`)
+          continue
+        }
+        
+        // Find matching team color from OpenF1 data
+        let teamColor = "#FFFFFF"
+        let matchFound = false
+        
+        // Look for direct match first
+        if (teamColorMap.has(normalizedName)) {
+          teamColor = teamColorMap.get(normalizedName)!
+          matchFound = true
+        } else {
+          // Try fuzzy matching
+          for (const [key, color] of teamColorMap.entries()) {
+            if (normalizedName.includes(key) || key.includes(normalizedName)) {
+              teamColor = color
+              matchFound = true
+              break
+            }
           }
         }
+        
+        const teamInfo = matchFound ? `${fantasyConstructor.name} (using OpenF1 colors)` : `${fantasyConstructor.name} (default color)`
+        
+        // Create constructor record
+        const marketConstructor: InsertMarketConstructor = {
+          name: fantasyConstructor.name,
+          color: teamColor,
+          // Use F1 Fantasy data for points and price
+          price: fantasyConstructor.price,
+          points: fantasyConstructor.points
+        }
+        
+        // Add to our unique constructors map
+        uniqueConstructors.set(normalizedName, marketConstructor)
+        console.log(`Added constructor from fantasy data: ${teamInfo}, Price: $${marketConstructor.price}M, Points: ${marketConstructor.points}`)
       }
+    } else {
+      // If no fantasy constructors, use calculated data from OpenF1
+      console.log("No fantasy constructor data - using OpenF1 data with calculated prices and points")
       
-      const teamInfo = matchFound ? `${fantasyConstructor.name} (using OpenF1 colors)` : `${fantasyConstructor.name} (default color)`
-      
-      // Create constructor record
-      const marketConstructor: InsertMarketConstructor = {
-        name: fantasyConstructor.name,
-        color: teamColor,
-        // Use F1 Fantasy data for points and price
-        price: fantasyConstructor.price,
-        points: fantasyConstructor.points
+      // Process each team with their drivers
+      for (const [teamName, drivers] of teamDrivers.entries()) {
+        // Normalize the team name for map lookups
+        const normalizedName = teamName.toLowerCase().trim()
+        
+        // Skip if we already processed this team
+        if (uniqueConstructors.has(normalizedName)) {
+          continue
+        }
+        
+        // Get team color
+        const teamColor = teamColorMap.get(normalizedName) || "#FFFFFF"
+        
+        // Create constructor details for calculation
+        const constructorDetails: ConstructorDetails = {
+          name: teamName,
+          color: teamColor,
+          drivers: drivers
+        }
+        
+        // Calculate price and points
+        const calculatedPrice = await calculateConstructorPrice(constructorDetails)
+        const calculatedPoints = await calculateConstructorPoints(constructorDetails, results)
+        
+        // Create constructor record
+        const marketConstructor: InsertMarketConstructor = {
+          name: teamName,
+          color: teamColor,
+          price: calculatedPrice,
+          points: calculatedPoints
+        }
+        
+        // Add to our unique constructors map
+        uniqueConstructors.set(normalizedName, marketConstructor)
+        console.log(`Added constructor from OpenF1 data: ${teamName}, Price: $${calculatedPrice}M, Points: ${calculatedPoints}`)
       }
-      
-      // Add to our unique constructors map
-      uniqueConstructors.set(normalizedName, marketConstructor)
-      console.log(`Added constructor: ${teamInfo}, Price: $${marketConstructor.price}M, Points: ${marketConstructor.points}`)
     }
     
     // Convert the map to an array for the final result

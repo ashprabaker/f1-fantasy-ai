@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 export default function DriverPerformance() {
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null)
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+  const [selectedYear, setSelectedYear] = useState<number>(2024)
   const [performanceData, setPerformanceData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

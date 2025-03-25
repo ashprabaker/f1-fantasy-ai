@@ -651,8 +651,16 @@ export async function getConstructorPerformanceData(constructorId: string, year?
     // Filter out null entries and take only valid seasons
     const validSeasonData = seasonData.filter(season => season !== null);
     
-    // Fetch race results for the selected year (for the performance chart)
-    const raceResultsResponse = await fetch(`${BASE_URL}/${effectiveYear}/constructors/${ergastConstructorId}/results.json`);
+    // First fetch all races for the season to ensure we get a complete list
+    const allRacesResponse = await fetch(`${BASE_URL}/${effectiveYear}.json`);
+    if (!allRacesResponse.ok) {
+      throw new Error(`Failed to fetch all races for ${effectiveYear}: ${allRacesResponse.statusText}`);
+    }
+    const allRacesData = await allRacesResponse.json();
+    const allRaces = allRacesData.MRData.RaceTable.Races || [];
+    
+    // Then fetch constructor-specific results
+    const raceResultsResponse = await fetch(`${BASE_URL}/${effectiveYear}/constructors/${ergastConstructorId}/results.json?limit=1000`);
     if (!raceResultsResponse.ok) {
       throw new Error(`Failed to fetch race results for ${effectiveYear}: ${raceResultsResponse.statusText}`);
     }
@@ -661,47 +669,56 @@ export async function getConstructorPerformanceData(constructorId: string, year?
     // Process race results data
     const raceResults: any[] = [];
     
-    // Process each race to get constructor position
+    // Create a lookup of constructor results by round
+    const constructorResultsByRound: Record<string, any> = {};
+    
     if (raceResultsData.MRData.RaceTable.Races && raceResultsData.MRData.RaceTable.Races.length > 0) {
-      // Group races by round to get team result per race
-      const racesByRound: Record<string, any> = {};
-      
       raceResultsData.MRData.RaceTable.Races.forEach((race: any) => {
         const round = race.round;
-        const raceName = race.raceName;
-        const date = race.date;
-        
-        // Initialize or update race data
-        if (!racesByRound[round]) {
-          racesByRound[round] = {
-            race: `${raceName} (${effectiveYear})`,
-            date: date,
-            position: 0, // Will be calculated from best result
-            points: 0,   // Will be sum of driver points
-            results: []
-          };
-        }
+        let points = 0;
+        const results: any[] = [];
         
         // Add each driver result
         race.Results.forEach((result: any) => {
-          racesByRound[round].points += parseFloat(result.points);
-          racesByRound[round].results.push({
+          points += parseFloat(result.points || 0);
+          results.push({
             position: parseInt(result.position),
-            points: parseFloat(result.points)
+            points: parseFloat(result.points || 0)
           });
         });
         
         // Calculate team position based on best driver result
-        if (racesByRound[round].results.length > 0) {
-          const bestPosition = Math.min(...racesByRound[round].results.map((r: any) => r.position));
-          racesByRound[round].position = bestPosition;
+        let position = 0;
+        if (results.length > 0) {
+          position = Math.min(...results.map(r => r.position));
         }
+        
+        constructorResultsByRound[round] = {
+          points,
+          position,
+          results
+        };
       });
-      
-      // Convert to array and sort by round
-      raceResults.push(...Object.values(racesByRound)
-        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()));
     }
+    
+    // Use all races as the basis and add constructor results where available
+    allRaces.forEach((race: any) => {
+      const round = race.round;
+      const raceName = race.raceName;
+      const date = race.date;
+      const constructorResult = constructorResultsByRound[round];
+      
+      raceResults.push({
+        race: `${raceName} (${effectiveYear})`,
+        date: date,
+        // If we have results for this round, use them; otherwise set defaults
+        position: constructorResult ? constructorResult.position : null,
+        points: constructorResult ? constructorResult.points : 0
+      });
+    });
+    
+    // Sort races by date
+    raceResults.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     // Fetch driver contribution data
     const driversResponse = await fetch(`${BASE_URL}/${effectiveYear}/constructors/${ergastConstructorId}/drivers.json`);

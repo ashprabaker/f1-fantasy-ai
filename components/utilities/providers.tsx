@@ -22,6 +22,7 @@ export function Providers({ children }: ProvidersProps) {
         attribute="class"
         defaultTheme="dark"
         enableSystem={false}
+        forcedTheme="dark"
       >
         <TooltipProvider>
           {children}

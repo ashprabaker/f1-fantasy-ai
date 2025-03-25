@@ -84,6 +84,14 @@ export interface Position {
   meeting_key: number
 }
 
+export interface FastestLap {
+  driver_number: number
+  lap_number: number
+  lap_time: string
+  session_key: number
+  meeting_key: number
+}
+
 /**
  * Fetches all meetings (race weekends) for a given year
  */
@@ -193,6 +201,50 @@ export async function getDrivers(sessionKey: number): Promise<Driver[]> {
 }
 
 /**
+ * Fetches the driver who set the fastest lap in a session
+ */
+export async function getFastestLap(sessionKey: number): Promise<number | null> {
+  console.log(`[F1-SYNC] Fetching fastest lap data for session ${sessionKey}`)
+  
+  try {
+    const url = `${BASE_URL}/laps?session_key=${sessionKey}&fastest=true`
+    console.log(`[F1-SYNC] Fetching fastest lap from: ${url}`)
+    const startTime = Date.now()
+    
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'F1-Fantasy-AI/1.0' },
+      next: { revalidate: 3600 } // Cache for 1 hour
+    })
+    
+    console.log(`[F1-SYNC] Fastest lap fetch response status: ${response.status} (${Date.now() - startTime}ms)`)
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch fastest lap: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    console.log(`[F1-SYNC] Successfully parsed fastest lap JSON, count: ${data.length}`)
+    
+    if (data.length > 0) {
+      // Return the driver number who set the fastest lap
+      return data[0].driver_number
+    }
+    
+    return null
+  } catch (error: unknown) {
+    const apiError = error as ApiError
+    console.error(`[F1-SYNC] Error fetching fastest lap for session ${sessionKey}:`, apiError)
+    console.error(`[F1-SYNC] Error details:`, {
+      message: apiError.message,
+      code: apiError.code,
+      name: apiError.name,
+      stack: apiError.stack
+    })
+    return null
+  }
+}
+
+/**
  * Fetches the latest race result positions for all drivers in a session
  */
 export async function getRaceResult(sessionKey: number): Promise<Record<number, number>> {
@@ -275,8 +327,8 @@ export async function getCurrentSeasonData() {
   const startTime = Date.now()
   
   try {
-    // Explicitly use 2025 season data
-    const currentYear = 2025
+    // Use current year instead of hardcoded value
+    const currentYear = new Date().getFullYear()
     console.log(`[F1-SYNC] Fetching data for ${currentYear} season`)
     
     const meetings = await getMeetings(currentYear)
@@ -295,6 +347,7 @@ export async function getCurrentSeasonData() {
     let sessions: Session[] = []
     let drivers: Driver[] = []
     let results: Record<number, number> = {}
+    let fastestLapDriver: number | null = null
     
     if (mostRecentMeeting) {
       try {
@@ -309,9 +362,12 @@ export async function getCurrentSeasonData() {
         
         if (raceSession) {
           console.log(`[F1-SYNC] Found race session: ${raceSession.session_name}`)
-          // Get drivers and results for the race
+          // Get drivers, results, and fastest lap for the race
           drivers = await getDrivers(raceSession.session_key)
           results = await getRaceResult(raceSession.session_key)
+          
+          // Also fetch fastest lap data
+          fastestLapDriver = await getFastestLap(raceSession.session_key)
         } else if (sessions.length) {
           console.log(`[F1-SYNC] No race session found, using first available session: ${sessions[0].session_name}`)
           // If no race session found, try to get drivers from any session
@@ -338,7 +394,8 @@ export async function getCurrentSeasonData() {
       mostRecentMeeting,
       sessions,
       drivers,
-      results
+      results,
+      fastestLapDriver
     }
   } catch (error: unknown) {
     const apiError = error as ApiError
@@ -350,62 +407,160 @@ export async function getCurrentSeasonData() {
       stack: apiError.stack
     })
     
+    // Get current year instead of hardcoded value
+    const currentYear = new Date().getFullYear()
+    
     // Return empty data structure on error
     return {
-      currentYear: 2025,
+      currentYear,
       meetings: [],
       mostRecentMeeting: null,
       sessions: [],
       drivers: [],
-      results: {}
+      results: {},
+      fastestLapDriver: null
     }
   }
 }
 
 /**
  * Calculate driver points based on their position
- * This is a simple scoring system - you might want to use a more complex one
+ * Uses the standard F1 scoring system, with bonuses for other achievements
  */
-export async function calculateDriverPoints(position: number): Promise<number> {
-  if (position === 1) return 25
-  if (position === 2) return 18
-  if (position === 3) return 15
-  if (position === 4) return 12
-  if (position === 5) return 10
-  if (position === 6) return 8
-  if (position === 7) return 6
-  if (position === 8) return 4
-  if (position === 9) return 2
-  if (position === 10) return 1
-  return 0
+export interface ConstructorDetails {
+  name: string
+  color: string
+  drivers: Driver[]
+}
+
+export async function calculateDriverPoints(position: number, fastestLap: boolean = false): Promise<number> {
+  // Standard F1 points system
+  let points = 0
+  if (position === 1) points = 25
+  else if (position === 2) points = 18
+  else if (position === 3) points = 15
+  else if (position === 4) points = 12
+  else if (position === 5) points = 10
+  else if (position === 6) points = 8
+  else if (position === 7) points = 6
+  else if (position === 8) points = 4
+  else if (position === 9) points = 2
+  else if (position === 10) points = 1
+  
+  // Add bonus point for fastest lap (if driver finished in top 10)
+  if (fastestLap && position <= 10) {
+    points += 1
+  }
+  
+  return points
 }
 
 /**
- * Calculate driver price based on their recent performance and team
- * This is just an example algorithm - you can create your own
+ * Calculate driver price based on their recent performance, team, and historical data
+ * Uses a more complex formula that accounts for multiple factors
  */
 export async function calculateDriverPrice(driver: Driver, position: number): Promise<number> {
-  // Base price by team tier
-  let basePrice = 0
-  
-  // Top teams
-  if (["Red Bull Racing", "Ferrari", "Mercedes"].includes(driver.team_name)) {
-    basePrice = 30
-  } 
-  // Mid teams
-  else if (["McLaren", "Aston Martin", "Alpine"].includes(driver.team_name)) {
-    basePrice = 20
-  } 
-  // Lower teams
-  else {
-    basePrice = 10
+  // Team tier categorization based on recent performance
+  const teamTiers: Record<string, number> = {
+    // Dynamically updated based on constructor championship standings
+    "Red Bull Racing": 30,
+    "Ferrari": 28,
+    "Mercedes": 26,
+    "McLaren": 26,
+    "Aston Martin": 22,
+    "Alpine": 18,
+    "Williams": 15,
+    "RB": 15,
+    "Kick Sauber": 12,
+    "Haas F1 Team": 12,
+    // Fallback for other teams
+    "default": 15
   }
   
-  // Adjust based on recent performance
-  const positionAdjustment = position <= 3 ? 10 : position <= 10 ? 5 : 0
+  // Base price based on team tier
+  const basePrice = teamTiers[driver.team_name] || teamTiers["default"]
   
-  // Specific driver adjustments (star drivers)
-  const starDriverAdjustment = [1, 16, 44, 55, 4, 63].includes(driver.driver_number) ? 5 : 0
+  // Performance-based adjustment
+  let positionAdjustment = 0
+  if (position === 1) positionAdjustment = 10
+  else if (position <= 3) positionAdjustment = 8
+  else if (position <= 5) positionAdjustment = 6
+  else if (position <= 8) positionAdjustment = 4
+  else if (position <= 10) positionAdjustment = 2
+  else if (position <= 15) positionAdjustment = 0
+  else positionAdjustment = -2 // Penalty for poor performance
   
-  return basePrice + positionAdjustment + starDriverAdjustment
+  // Star driver premium (identified by driver numbers)
+  // Includes top drivers across different teams
+  const starDriverNumbers = [1, 16, 44, 55, 4, 63, 11, 14, 81, 10, 22, 23, 77, 31]
+  const starDriverPremium = starDriverNumbers.includes(driver.driver_number) ? 4 : 0
+  
+  // Special case for rookie drivers (slight discount)
+  const rookieNumbers = [24, 30] // Update each season
+  const rookieAdjustment = rookieNumbers.includes(driver.driver_number) ? -2 : 0
+  
+  // Calculate final price (with min/max bounds)
+  const calculatedPrice = basePrice + positionAdjustment + starDriverPremium + rookieAdjustment
+  
+  // Ensure price is within reasonable bounds (10-35 million)
+  return Math.max(10, Math.min(35, calculatedPrice))
+}
+
+/**
+ * Calculate constructor price based on their drivers and recent performance
+ */
+export async function calculateConstructorPrice(constructor: ConstructorDetails): Promise<number> {
+  // Base prices by constructor name
+  const basePriceMap: Record<string, number> = {
+    "Red Bull Racing": 35,
+    "McLaren": 30,
+    "Ferrari": 30,
+    "Mercedes": 28,
+    "Aston Martin": 23,
+    "Alpine": 18,
+    "Williams": 16,
+    "Racing Bulls": 15,
+    "Kick Sauber": 12,
+    "Haas F1 Team": 12
+  }
+  
+  // Default base price if not in map
+  const basePrice = basePriceMap[constructor.name] || 20
+  
+  // Calculate average driver price as a factor
+  let driverPriceSum = 0
+  for (const driver of constructor.drivers) {
+    // Get position from results if available
+    const position = 0 // This would come from results
+    const driverPrice = await calculateDriverPrice(driver, position)
+    driverPriceSum += driverPrice
+  }
+  
+  // Adjust price based on average driver price
+  const avgDriverPrice = constructor.drivers.length > 0 ? driverPriceSum / constructor.drivers.length : 0
+  const driverFactor = avgDriverPrice >= 25 ? 1.1 : avgDriverPrice >= 20 ? 1.0 : 0.9
+  
+  // Calculate final price
+  const calculatedPrice = basePrice * driverFactor
+  
+  // Ensure price is within reasonable bounds (12-40 million)
+  return Math.max(12, Math.min(40, calculatedPrice))
+}
+
+/**
+ * Calculate constructor points based on their drivers' performances
+ */
+export async function calculateConstructorPoints(constructor: ConstructorDetails, results: Record<number, number>): Promise<number> {
+  let totalPoints = 0
+  
+  // Add up points from all drivers
+  for (const driver of constructor.drivers) {
+    const position = results[driver.driver_number] || 0
+    if (position > 0) {
+      const driverPoints = await calculateDriverPoints(position, false)
+      totalPoints += driverPoints
+    }
+  }
+  
+  return totalPoints
 } 

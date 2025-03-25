@@ -15,7 +15,7 @@ import { getConstructorPerformanceAction } from "@/actions/db/market-data-action
 
 export default function TeamAnalysis() {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null)
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+  const [selectedYear, setSelectedYear] = useState<number>(2024)
   const [performanceData, setPerformanceData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

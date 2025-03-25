@@ -22,7 +22,7 @@ export default async function RootLayout({
   // This is causing errors since the column structure doesn't match
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`}>
         <Providers>
           {children}

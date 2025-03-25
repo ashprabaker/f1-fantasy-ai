@@ -18,7 +18,8 @@ export default function TeamPerformanceChart({ data }: TeamPerformanceChartProps
   const chartData = data.map(race => ({
     ...race,
     // Invert position so higher on chart is better (1st place at top)
-    positionInverted: 11 - race.position, // Max 10 teams
+    // Handle null positions (races where constructor didn't participate)
+    positionInverted: race.position ? 11 - race.position : null, 
     // Short name for x-axis
     shortName: race.race.split(' ')[0]
   }))
@@ -75,6 +76,9 @@ export default function TeamPerformanceChart({ data }: TeamPerformanceChartProps
             <Tooltip 
               labelFormatter={(value) => `Race: ${value}`}
               formatter={(value, name, props) => {
+                if (name === "Position" && value === null) {
+                  return ["Did not participate", name];
+                }
                 return [value, name];
               }}
               wrapperStyle={{ fontSize: '12px', padding: '5px' }}
@@ -93,6 +97,7 @@ export default function TeamPerformanceChart({ data }: TeamPerformanceChartProps
               strokeWidth={2}
               dot={{ r: 4 }}
               activeDot={{ r: 8 }}
+              connectNulls={false}
             />
             <Line 
               yAxisId="points"
